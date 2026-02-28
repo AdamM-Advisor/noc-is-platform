@@ -40,7 +40,7 @@ TIMESTAMP_COLUMNS = [
 ]
 
 
-def process_ticket_file(file_path: str, file_type: str, progress_callback=None) -> dict:
+def process_ticket_file(file_path: str, file_type: str, progress_callback=None, header_format=None) -> dict:
     start_time = time.time()
 
     def update_progress(phase, detail="", row=0, total=0):
@@ -67,7 +67,8 @@ def process_ticket_file(file_path: str, file_type: str, progress_callback=None) 
     total_rows = len(df)
     update_progress("normalizing", "Menormalisasi header...", 0, total_rows)
 
-    header_format = "snake_case" if file_type == "swfm_realtime" else "title_case"
+    if header_format is None:
+        header_format = "snake_case" if file_type == "swfm_realtime" else "title_case"
     norm_result = normalize_headers(df, header_format)
     df = norm_result["df"]
 

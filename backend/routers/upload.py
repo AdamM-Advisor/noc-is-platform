@@ -207,7 +207,8 @@ def _run_processing(job_id, file_path, filename, file_type_override):
             _log_site_master_import(filename, file_path, result)
         else:
             from backend.services.ticket_processor import process_ticket_file
-            result = process_ticket_file(file_path, file_type, progress_callback=update_progress)
+            detected_header_format = detection.get("header_format", None)
+            result = process_ticket_file(file_path, file_type, progress_callback=update_progress, header_format=detected_header_format)
 
         _processing_jobs[job_id]["status"] = "completed"
         _processing_jobs[job_id]["result"] = result
