@@ -10,6 +10,7 @@ from backend.routers import hierarchy, site, sla_target, data_quality, external
 from backend.routers import profiler
 from backend.routers import gangguan
 from backend.routers import predictive
+from backend.routers import dashboard, report_card
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ app.include_router(external.router, prefix="/api")
 app.include_router(profiler.router, prefix="/api")
 app.include_router(gangguan.router, prefix="/api")
 app.include_router(predictive.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
+app.include_router(report_card.router, prefix="/api")
 
 
 @app.on_event("startup")

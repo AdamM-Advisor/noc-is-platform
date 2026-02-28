@@ -1,0 +1,879 @@
+# ============================================================
+
+# PROMPT 10 — DASHBOARD OVERVIEW & REPORT CARD
+
+# NOC-IS Analytics Platform v1.0
+
+# Author: Dr. Adam M.
+
+# ============================================================
+
+#
+
+# PRASYARAT:
+
+# Prompt 0-7, 9 sudah dijalankan
+
+# Profiler (Panel 1-4) dan semua API endpoints tersedia
+
+#
+
+# HASIL YANG DIHARAPKAN:
+
+# ✅ Menu "Dashboard" — executive overview page (bukan Profiler)
+
+# ✅ Overall Status Engine (4 status: Kritis/Perlu Perhatian/Baik/Sangat Baik)
+
+# ✅ Complete Recommendation Engine (R01-R20, grouped, chained)
+
+# ✅ Report Card page — printable single-page per entity
+
+# ✅ Threshold Settings page — semua parameter configurable
+
+# ✅ Export Report Card ke PDF
+
+# ============================================================
+
+Lanjutkan pembangunan **NOC-IS Analytics Platform**. Profiler (Prompt 6-9) sudah selesai sebagai mesin analitik per-entity. Sekarang bangun:
+
+1. **Dashboard** — halaman executive overview yang melihat KESELURUHAN jaringan
+2. **Report Card** — ringkasan 1 halaman per entity, printable/exportable
+3. **Recommendation Engine** — complete rule engine R01-R20
+4. **Threshold Settings** — semua parameter analytics configurable
+
+**PERBEDAAN Dashboard vs Profiler:**
+
+* **Profiler**: deep-dive 1 entity, 5 panel, drill-down detail
+* **Dashboard**: bird's-eye view seluruh jaringan, quick glance, navigasi ke Profiler
+
+* * *
+
+## 1. MENU STRUCTURE UPDATE
+
+    Sidebar:
+      📊 Dashboard          ← PROMPT INI (executive overview)
+      🔍 Profiler           ← Prompt 6-9 (deep-dive per entity)
+      📋 Report Card        ← PROMPT INI (printable summary)
+      📤 Upload             ← Prompt 2
+      ⚙️ Settings           ← Prompt 3 + Threshold Settings (PROMPT INI)
+
+* * *
+
+## 2. DASHBOARD — EXECUTIVE OVERVIEW
+
+### 2A. Layout
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  📊 Dashboard NOC-IS                     Periode: [Jul 2025 ▾]      │
+    │  Author: Dr. Adam M.                     Level: [Area ▾] [Semua ▾]  │
+    │                                                                       │
+    │  ═══ STATUS KESELURUHAN ═══                                          │
+    │  ┌─────────────────────────────────────────────────────────────────┐ │
+    │  │  🟡 PERLU PERHATIAN                                             │ │
+    │  │                                                                   │ │
+    │  │  "Jaringan NOC-IS menunjukkan performa di bawah target           │ │
+    │  │   dengan SLA 88.5% (target 90%). 3 dari 13 Regional berada      │ │
+    │  │   dalam status Kritis. Volume stabil tapi MTTR naik 8% MoM.     │ │
+    │  │   5 Regional memerlukan perhatian segera."                       │ │
+    │  └─────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ═══ KPI SNAPSHOT ═══                                                │
+    │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+    │  │ Volume   │ │ SLA 🟡   │ │ MTTR 🟠  │ │ Esc 🟢   │ │ Auto 🟢  │  │
+    │  │ 128.5K   │ │ 88.5%    │ │ 890m     │ │ 4.2%     │ │ 52%      │  │
+    │  │ ─ +1.2%  │ │ ▼-0.8pp  │ │ ▲+8%     │ │ ▼-0.5pp  │ │ ▲+2pp    │  │
+    │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+    │                                                                       │
+    │  ═══ CHILD ENTITIES STATUS MAP ═══                                   │
+    │  ┌─────────────────────────────────────────────────────────────────┐ │
+    │  │  Regional     │ SLA%  │ Trend │ Status    │ Action             │ │
+    │  │  ─────────────┼───────┼───────┼───────────┼──────────────────  │ │
+    │  │  R03 Jabar    │ 82.5% │ 📉    │ 🔴 Kritis │ [Lihat Profil →]  │ │
+    │  │  R06 Jateng   │ 86.2% │ 📉    │ 🔴 Kritis │ [Lihat Profil →]  │ │
+    │  │  R08 Kalimantan│ 84.8% │ ─    │ 🔴 Kritis │ [Lihat Profil →]  │ │
+    │  │  R01 Sumut    │ 89.5% │ 📉    │ 🟡 Perhatian│ [Lihat Profil →] │ │
+    │  │  R02 Riau     │ 89.8% │ ─     │ 🟡 Perhatian│ [Lihat Profil →] │ │
+    │  │  ...                                                             │ │
+    │  │  R07 Jatim    │ 94.2% │ 📈    │ 🏆 Sangat Baik│ [Profil →]     │ │
+    │  │  R12 Sulawesi │ 93.8% │ ─     │ 🟢 Baik   │ [Lihat Profil →]  │ │
+    │  └─────────────────────────────────────────────────────────────────┘ │
+    │  Sorted by: SLA ASC (terburuk di atas)                               │
+    │                                                                       │
+    │  ═══ TOP 5 REKOMENDASI ═══                                          │
+    │  ┌─── 🔴 SEGERA ───────────────────────────────────────────────┐    │
+    │  │ 1. R03 Jabar: SLA kritis (82.5%) + tren menurun.            │    │
+    │  │    ▶ AKSI: Eskalasi ke Regional Head. Fokus NOP Jakarta.     │    │
+    │  │    📊 Impact: Perbaikan 3 NOP terburuk → SLA +2.5pp          │    │
+    │  ├─── 🟡 MINGGU INI ──────────────────────────────────────────┤    │
+    │  │ 2. R06 Jateng: MTTR naik 15%/bulan selama 3 bulan.          │    │
+    │  │    ▶ AKSI: Review proses repair di NOP Semarang.             │    │
+    │  │ 3. 23 site diprediksi insiden minggu depan (pattern-based).  │    │
+    │  │    ▶ AKSI: Jadwalkan preventive maintenance.                  │    │
+    │  └──────────────────────────────────────────────────────────────┘    │
+    │                                                                       │
+    │  ═══ QUICK CHARTS ═══                                                │
+    │  ┌── SLA Trend (3 bulan) ────┐  ┌── Volume Trend (3 bulan) ───┐    │
+    │  │ 92┤                        │  │ 140K┤                        │    │
+    │  │ 90┤──target────────────── │  │ 130K┤──●──●                  │    │
+    │  │ 88┤     ●──●──●──●       │  │ 120K┤        ──●──●          │    │
+    │  │ 86┤                        │  │ 110K┤                        │    │
+    │  │   └─Mai──Jun──Jul──       │  │     └─Mai──Jun──Jul──        │    │
+    │  └────────────────────────────┘  └──────────────────────────────┘    │
+    │                                                                       │
+    │  ┌── Risk Distribution ──────┐  ┌── Behavior Distribution ────┐    │
+    │  │  🔴 HIGH:  1.250 (1.6%)   │  │  Chronic:      2.100 (2.7%) │    │
+    │  │  🟡 MED:   8.500 (10.8%)  │  │  Deteriorating: 3.400 (4.3%)│    │
+    │  │  🟢 LOW:  68.925 (87.6%)  │  │  Sporadic:     1.800 (2.3%) │    │
+    │  │  █████████████████████░░░ │  │  Seasonal:       900 (1.1%) │    │
+    │  │                            │  │  Improving:    5.200 (6.6%) │    │
+    │  │                            │  │  Healthy:     65.275 (83.0%)│    │
+    │  └────────────────────────────┘  └──────────────────────────────┘    │
+    │                                                                       │
+    │  Footer: Dr. Adam M. | Last updated: {timestamp}                     │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 2B. Dashboard Selector
+
+    Dashboard punya selector SEDERHANA (bukan 3-dimensi seperti Profiler):
+    
+      Periode: [Dropdown bulan/minggu]
+      Level:   [Area ▾]  — level mana yang ditampilkan sebagai row
+      Filter:  [Semua ▾] — filter ke Area/Regional tertentu
+    
+    Contoh:
+      Level = "Regional", Filter = "Semua"
+        → Dashboard menampilkan 13 Regional sebagai rows
+      Level = "NOP", Filter = "R03 Jabar"
+        → Dashboard menampilkan 6 NOP di R03 sebagai rows
+      Level = "TO", Filter = "NOP Jakarta"
+        → Dashboard menampilkan 8 TO di NOP Jakarta sebagai rows
+    
+    Default: Level = Area (4 baris), Filter = Semua
+
+### 2C. Dashboard Data Source
+
+    Dashboard SELALU menggunakan summary_monthly (pre-aggregated).
+    TIDAK pernah query noc_tickets.
+    
+    API: POST /api/dashboard/overview
+      Input: {
+        period: "2025-07",
+        view_level: "regional",        // area|regional|nop|to
+        parent_filter: null,           // null=semua, atau entity_id
+      }
+      Output: {
+        overall_status: {...},
+        kpi_snapshot: {...},
+        entities: [{id, name, sla, mttr, volume, trend, status, behavior_mix}, ...],
+        recommendations: [{...}, ...],  // top 5
+        charts: {
+          sla_trend: [{period, value}, ...],
+          volume_trend: [{period, value}, ...],
+          risk_distribution: {high, medium, low, total},
+          behavior_distribution: {chronic, deteriorating, ..., total},
+        }
+      }
+
+* * *
+
+## 3. OVERALL STATUS ENGINE
+
+### 3A. Rules
+
+    def determine_overall_status(kpis, trend, risk_summary, children) -> dict:
+        """
+        Tentukan status keseluruhan entity.
+        4 level status:
+        """
+        sla = kpis['sla_pct']
+        target = kpis['sla_target']
+        sla_trend = trend['sla_quality']       # 'improving'|'neutral'|'worsening'
+        has_high_risk = risk_summary['pct_high'] > 10 if risk_summary else False
+        n_critical_children = sum(1 for c in children if c['status'] == 'critical')
+    
+        # Rule 1: KRITIS
+        if sla < target - 5 and sla_trend == 'worsening':
+            return {
+                "status": "KRITIS",
+                "icon": "🔴",
+                "color": "#DC2626",
+                "rule": "SLA jauh di bawah target DAN tren memburuk"
+            }
+    
+        # Rule 1b: KRITIS (alternatif)
+        if sla < target and sla_trend == 'worsening' and has_high_risk:
+            return {
+                "status": "KRITIS",
+                "icon": "🔴",
+                "color": "#DC2626",
+                "rule": "SLA di bawah target + tren memburuk + risk tinggi"
+            }
+    
+        # Rule 2: PERLU PERHATIAN
+        if sla < target or sla_trend == 'worsening' or has_high_risk:
+            return {
+                "status": "PERLU PERHATIAN",
+                "icon": "🟡",
+                "color": "#D97706",
+                "rule": "SLA di bawah target ATAU tren memburuk ATAU risk tinggi"
+            }
+    
+        # Rule 3: SANGAT BAIK
+        if sla >= target + 3 and sla_trend == 'improving':
+            return {
+                "status": "SANGAT BAIK",
+                "icon": "🏆",
+                "color": "#059669",
+                "rule": "SLA di atas target+3pp DAN tren membaik"
+            }
+    
+        # Rule 4: BAIK (default)
+        return {
+            "status": "BAIK",
+            "icon": "🟢",
+            "color": "#16A34A",
+            "rule": "SLA memenuhi target, tren tidak memburuk, risk terkendali"
+        }
+
+### 3B. Narrative Generation
+
+    def generate_overall_narrative(entity, status, kpis, trend, risk, children) -> str:
+        """
+        Auto-generate paragraf ringkasan eksekutif.
+        Template-based (BUKAN AI).
+        """
+        parts = []
+    
+        # Part 1: Entity + SLA vs target
+        gap = kpis['sla_pct'] - kpis['sla_target']
+        if gap >= 0:
+            parts.append(
+                f"{entity['name']} menunjukkan SLA {kpis['sla_pct']:.1f}% "
+                f"({gap:+.1f}pp dari target {kpis['sla_target']}%)."
+            )
+        else:
+            parts.append(
+                f"{entity['name']} menunjukkan SLA {kpis['sla_pct']:.1f}% "
+                f"({abs(gap):.1f}pp di bawah target {kpis['sla_target']}%)."
+            )
+    
+        # Part 2: Trend
+        if trend['sla_quality'] == 'worsening':
+            parts.append(
+                f"Tren SLA menurun {abs(trend['sla_slope']):.1f}pp/bulan "
+                f"selama {trend['consecutive']} bulan terakhir."
+            )
+        elif trend['sla_quality'] == 'improving':
+            parts.append(
+                f"Tren SLA membaik {trend['sla_slope']:.1f}pp/bulan."
+            )
+    
+        # Part 3: Problem children
+        n_critical = sum(1 for c in children if c['status'] in ('KRITIS', 'critical'))
+        total = len(children)
+        if n_critical > 0:
+            child_type = get_child_type_label(entity['level'])
+            parts.append(
+                f"{n_critical} dari {total} {child_type} berada dalam status Kritis."
+            )
+    
+        # Part 4: Volume & MTTR
+        vol_change = kpis.get('volume_mom_pct', 0)
+        mttr_change = kpis.get('mttr_mom_pct', 0)
+        vol_word = "naik" if vol_change > 5 else ("turun" if vol_change < -5 else "stabil")
+        mttr_word = "naik" if mttr_change > 5 else ("turun" if mttr_change < -5 else "stabil")
+        parts.append(
+            f"Volume {vol_word} ({vol_change:+.1f}% MoM), "
+            f"MTTR {mttr_word} ({mttr_change:+.1f}% MoM)."
+        )
+    
+        return " ".join(parts)
+
+* * *
+
+## 4. RECOMMENDATION ENGINE — COMPLETE (R01-R20)
+
+### 4A. Engine Architecture
+
+    # File: backend/services/recommendation_service.py
+    
+    class RecommendationEngine:
+        """
+        Complete recommendation engine.
+        Evaluates all 20 rules → dedup → chain → sort → return top 5.
+        """
+    
+        def generate(self, entity, kpis, trend, risk, children, anomalies) -> list:
+            raw_recs = []
+    
+            # ── SLA RULES ──
+            raw_recs += self._eval_sla_rules(entity, kpis, trend, children)
+            # ── MTTR RULES ──
+            raw_recs += self._eval_mttr_rules(entity, kpis, trend)
+            # ── VOLUME RULES ──
+            raw_recs += self._eval_volume_rules(entity, kpis, trend)
+            # ── RISK RULES ──
+            raw_recs += self._eval_risk_rules(entity, risk, children)
+            # ── ESCALATION RULES ──
+            raw_recs += self._eval_escalation_rules(entity, kpis)
+            # ── TREND RULES ──
+            raw_recs += self._eval_trend_rules(entity, trend, anomalies, children)
+            # ── DEVICE RULES ──
+            raw_recs += self._eval_device_rules(entity, risk, children)
+            # ── POSITIVE RULES ──
+            raw_recs += self._eval_positive_rules(entity, kpis, trend)
+    
+            # Step 2: Chain related recommendations
+            chained = self._chain_related(raw_recs)
+    
+            # Step 3: Deduplicate parent-child overlap
+            deduped = self._dedup_hierarchy(chained)
+    
+            # Step 4: Sort by priority
+            sorted_recs = sorted(deduped, key=lambda r: 
+                {"SEGERA": 0, "MINGGU_INI": 1, "BULAN_INI": 2, "RUTIN": 3}[r['priority']]
+            )
+    
+            # Step 5: Return top 5
+            return sorted_recs[:5]
+
+### 4B. Complete Rule Table
+
+    # 20 rules, dikelompokkan per kategori.
+    # Setiap rule: trigger → priority + message + action + impact
+    
+    RULES = {
+        # ═══ SLA (R01-R04) ═══
+        "R01": {
+            "trigger": lambda k, t: k['sla_pct'] < k['sla_target'] - 5,
+            "priority": "SEGERA",
+            "category": "SLA",
+            "message": "SLA {entity} ({sla}%) jauh di bawah target ({target}%).",
+            "action": "Identifikasi {top_n} {child_type} penyumbang breach terbesar. Eskalasi ke {escalation_target}.",
+            "impact": "Perbaikan {n} {child_type} terburuk → SLA naik ~{impact}pp.",
+        },
+        "R02": {
+            "trigger": lambda k, t: k['sla_pct'] < k['sla_target'] and t['sla_quality'] == 'worsening',
+            "priority": "SEGERA",
+            "category": "SLA",
+            "message": "SLA di bawah target DAN terus menurun ({rate}pp/bulan).",
+            "action": "Rapat darurat. Review proses response & repair. Tanpa intervensi, SLA mencapai {projected}% dalam {weeks} minggu.",
+        },
+        "R03": {
+            "trigger": lambda k, t: k['sla_pct'] >= k['sla_target'] and t['sla_quality'] == 'worsening',
+            "priority": "MINGGU_INI",
+            "category": "SLA",
+            "message": "SLA masih memenuhi target tapi tren MENURUN ({rate}pp/bulan).",
+            "action": "Monitoring ketat. Breach dalam ~{weeks} minggu jika dibiarkan.",
+        },
+        "R04": {
+            "trigger": lambda k, t: k['sla_pct'] >= k['sla_target'] + 3 and t['sla_quality'] != 'worsening',
+            "priority": "RUTIN",
+            "category": "SLA",
+            "message": "✅ SLA ({sla}%) di atas target dengan margin baik.",
+            "action": "Pertahankan. Share best practice ke peers.",
+        },
+    
+        # ═══ MTTR (R05-R07) ═══
+        "R05": {
+            "trigger": lambda k, t: k['avg_mttr_min'] > 1440,
+            "priority": "SEGERA",
+            "category": "MTTR",
+            "message": "MTTR sangat tinggi ({mttr} menit = {hours} jam).",
+            "action": "Bottleneck: {longest_component} ({comp_pct}% total). Review proses {longest_component}.",
+        },
+        "R06": {
+            "trigger": lambda k, t: t.get('mttr_quality') == 'worsening' and abs(t.get('mttr_slope',0)) > 10,
+            "priority": "MINGGU_INI",
+            "category": "MTTR",
+            "message": "MTTR cenderung naik ({rate}%/bulan).",
+            "action": "Investigasi penyebab kelambatan di {rising_comp}.",
+        },
+        "R07": {
+            "trigger": lambda k, t: k.get('avg_response_min', 0) > 60,
+            "priority": "MINGGU_INI",
+            "category": "MTTR",
+            "message": "Response time tinggi ({rt} menit).",
+            "action": "Review alokasi personel dan coverage area.",
+        },
+    
+        # ═══ VOLUME (R08-R09) ═══
+        "R08": {
+            "trigger": lambda k, t: abs(k.get('volume_mom_pct', 0)) > 15,
+            "priority": "MINGGU_INI",
+            "category": "VOLUME",
+            "message": "Volume tiket berubah signifikan ({change}% MoM).",
+            "action": "Analisis: insiden massal, aging, monitoring threshold, atau musiman?",
+        },
+        "R09": {
+            "trigger": lambda k, t: k.get('forecast_utilization', 0) > 90,
+            "priority": "SEGERA",
+            "category": "CAPACITY",
+            "message": "🔴 CAPACITY ALERT: Forecast mendekati/melebihi kapasitas ({util}%).",
+            "action": "Minta resource tambahan, prioritaskan severity tinggi, redistribusi beban.",
+        },
+    
+        # ═══ RISK (R10-R12) ═══
+        "R10": {
+            "trigger": lambda k, t: k.get('risk_score', 0) >= 70,  # site level only
+            "priority": "SEGERA",
+            "category": "RISK",
+            "message": "Site berisiko TINGGI ({score}/100). Komponen tertinggi: {top_comp}.",
+            "action": "Jadwalkan preventive maintenance sebelum {predicted_next}.",
+            "impact": "PM dapat mencegah ~60-70% insiden.",
+        },
+        "R11": {
+            "trigger": lambda k, t: k.get('pct_high_risk', 0) > 10,  # TO+ level
+            "priority": "MINGGU_INI",
+            "category": "RISK",
+            "message": "{n} dari {total} site ({pct}%) berisiko tinggi.",
+            "action": "Buat program maintenance batch. Kelompokkan per lokasi.",
+        },
+        "R12": {
+            "trigger": lambda k, t: k.get('pattern_days_until', 999) <= 7,  # site level
+            "priority": "MINGGU_INI",
+            "category": "RISK",
+            "message": "Pola gangguan setiap ~{avg_gap} hari. Next: ~{next_date}.",
+            "action": "Maintenance preventif pada {recommended_window}.",
+        },
+    
+        # ═══ ESCALATION (R13-R14) ═══
+        "R13": {
+            "trigger": lambda k, t: k.get('escalation_pct', 0) > 7,
+            "priority": "MINGGU_INI",
+            "category": "ESCALATION",
+            "message": "Eskalasi tinggi ({rate}%).",
+            "action": "Review: kurang kompetensi tier-1, kompleksitas naik, atau kurang resource?",
+        },
+        "R14": {
+            "trigger": lambda k, t: k.get('repeat_pct', 0) > 25,
+            "priority": "SEGERA",
+            "category": "REPEAT",
+            "message": "Repeat incident sangat tinggi ({rate}%). Root cause belum terselesaikan.",
+            "action": "Wajibkan RCA untuk setiap repeat incident. Review {top_sites}.",
+        },
+    
+        # ═══ TREND (R15-R16) ═══
+        "R15": {
+            "trigger": lambda k, t: len(t.get('anomalies', [])) > 0,
+            "priority": "SEGERA",
+            "category": "TREND",
+            "message": "⚡ Anomali terdeteksi: {kpi} = {value} (z-score: {z}).",
+            "action": "Investigasi: insiden besar, perubahan config, atau error data?",
+        },
+        "R16": {
+            "trigger": lambda k, t: t.get('parent_stable_child_worsening', False),
+            "priority": "MINGGU_INI",
+            "category": "TREND",
+            "message": "Entity stabil, NAMUN {n} {child_type} ({pct}%) trennya memburuk.",
+            "action": "Review individual {child_type} yang memburuk — masalah ter-mask.",
+        },
+    
+        # ═══ DEVICE (R17-R18) ═══
+        "R17": {
+            "trigger": lambda k, t: k.get('device_age', 0) > 7 and k.get('risk_score', 0) > 50,
+            "priority": "BULAN_INI",
+            "category": "DEVICE",
+            "message": "Perangkat usia {age} tahun (melebihi usia ekonomis) + risk {risk_level}.",
+            "action": "Evaluasi penggantian perangkat. Masukkan ke rencana CAPEX.",
+        },
+        "R18": {
+            "trigger": lambda k, t: k.get('flag_3t', False) and k.get('avg_mttr_min', 0) > 1000,
+            "priority": "MINGGU_INI",
+            "category": "DEVICE",
+            "message": "Site 3T dengan MTTR tinggi ({mttr} menit).",
+            "action": "Spare part pre-positioning, remote monitoring, pelatihan lokal.",
+        },
+    
+        # ═══ POSITIVE (R19-R20) ═══
+        "R19": {
+            "trigger": lambda k, t: t.get('sla_quality') == 'improving' and t.get('consecutive', 0) >= 3,
+            "priority": "RUTIN",
+            "category": "POSITIVE",
+            "message": "✅ Perbaikan konsisten: SLA naik {rate}pp/bulan selama {n} bulan.",
+            "action": "Pertahankan. Dokumentasikan best practice untuk peers.",
+        },
+        "R20": {
+            "trigger": lambda k, t: k.get('behavior') == 'Improving' and k.get('prev_behavior') in ('Chronic', 'Deteriorating'),
+            "priority": "RUTIN",
+            "category": "POSITIVE",
+            "message": "✅ Membaik: dari {prev_label} → Improving.",
+            "action": "Monitor 1 bulan untuk konfirmasi.",
+        },
+    }
+
+### 4C. Chaining & Display Logic
+
+    def _chain_related(self, raw_recs: list) -> list:
+        """
+        Chain rekomendasi yang terkait menjadi 1 group.
+        Contoh: R01 (SLA kritis) + R05 (MTTR tinggi) + R14 (repeat)
+        → 1 rekomendasi: "SLA kritis KARENA MTTR tinggi, DISEBABKAN repeat"
+        """
+        chains = {
+            ("R01", "R02"): "SLA_CRISIS",
+            ("R01", "R05"): "SLA_MTTR",
+            ("R05", "R14"): "MTTR_REPEAT",
+            ("R01", "R05", "R14"): "SLA_MTTR_REPEAT",
+        }
+    
+        # Group yang bisa di-chain
+        triggered_ids = {r['rule_id'] for r in raw_recs}
+        chained = []
+        consumed = set()
+    
+        # Cari chain terpanjang dulu
+        for chain_ids, chain_name in sorted(chains.items(), key=lambda x: -len(x[0])):
+            if all(rid in triggered_ids for rid in chain_ids) and not any(rid in consumed for rid in chain_ids):
+                primary = next(r for r in raw_recs if r['rule_id'] == chain_ids[0])
+                supporting = [r for r in raw_recs if r['rule_id'] in chain_ids[1:]]
+    
+                primary['chained_with'] = [s['rule_id'] for s in supporting]
+                primary['message'] += " " + " ".join(
+                    f"Faktor: {s['message']}" for s in supporting
+                )
+                chained.append(primary)
+                consumed.update(chain_ids)
+    
+        # Tambahkan yang tidak ter-chain
+        for r in raw_recs:
+            if r['rule_id'] not in consumed:
+                chained.append(r)
+    
+        return chained
+    
+    
+    # Display format:
+    # ┌─── 🔴 SEGERA ────────────────────────────────────────┐
+    # │  1. SLA KRITIS (R01 + R05 + R14)                     │
+    # │     SLA 82.5% — 7.5pp di bawah target.               │
+    # │     Faktor: MTTR sangat tinggi (1.250 menit).         │
+    # │     Faktor: Repeat incident 35%.                      │
+    # │                                                        │
+    # │     ▶ AKSI: Eskalasi ke NOP Manager. Fokus 3 site     │
+    # │       terburuk. Wajibkan RCA untuk repeat.             │
+    # │     📊 Impact: Perbaikan → SLA naik ~2.5pp             │
+    # ├─── 🟡 MINGGU INI ────────────────────────────────────┤
+    # │  2. ...                                                │
+    # └────────────────────────────────────────────────────────┘
+
+* * *
+
+## 5. REPORT CARD PAGE
+
+### 5A. Konsep
+
+    Report Card = RINGKASAN 1 halaman per entity.
+    Bisa diprint/export ke PDF.
+    Menggabungkan data dari semua panel Profiler ke format compact.
+    
+    Beda dengan Profiler:
+      Profiler = interaktif, drill-down, 5 panel scrollable
+      Report Card = static snapshot, 1 halaman, printable
+    
+    URL: /report-card?level=regional&id=R03&period=2025-07
+
+### 5B. Report Card Layout
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  📋 REPORT CARD                                          [🖨️ Print]  │
+    │  {entity_name} | {level} | Periode: {period}            [📥 PDF]    │
+    │  Generated: {timestamp} | Author: Dr. Adam M.                       │
+    │                                                                       │
+    │  ┌─── STATUS ─────────────────────────────────────────────────────┐ │
+    │  │  🟡 PERLU PERHATIAN                                             │ │
+    │  │  "{entity} menunjukkan SLA 88.5% (1.5pp di bawah target 90%).  │ │
+    │  │   Tren menurun. 3 dari 6 NOP memerlukan perhatian segera."     │ │
+    │  └─────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ┌─── PROFIL ───────────┐  ┌─── KPI ──────────────────────────────┐│
+    │  │ Level: Regional       │  │ Vol    │ SLA    │ MTTR  │ Esc  │Auto ││
+    │  │ Parent: Area Barat    │  │ 45.2K  │ 88.5%  │ 890m  │ 5.1% │52% ││
+    │  │ Children: 6 NOP       │  │ +1.2%  │ -0.8pp │ +8%   │-0.5pp│+2pp││
+    │  │ Sites: 2.450          │  │ ─      │ 🟡     │ 🟠    │ 🟢   │ 🟢 ││
+    │  │ Behavior: Mixed       │  ├────────┴────────┴───────┴──────┴────┤│
+    │  │ Chronic: 65 (2.7%)    │  │ Peer Rank: #8 / 13 (p38)            ││
+    │  │ Healthy: 2.035 (83%)  │  │ "Di bawah median peers"             ││
+    │  └───────────────────────┘  └─────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── TREN (3 bulan) ────────────────────────────────────────────┐ │
+    │  │  SLA: 89.8 → 89.0 → 88.5  📉 -0.65pp/bln (memburuk)         │ │
+    │  │  MTTR: 820 → 850 → 890    📈 +4.2%/bln (memburuk)            │ │
+    │  │  Volume: 44.5K → 45.0K → 45.2K  ─ stabil                     │ │
+    │  │  [Sparkline charts untuk masing-masing]                        │ │
+    │  └────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ┌─── CHILD RANKING ─────────────────────────────────────────────┐ │
+    │  │  #  │ NOP        │ SLA%  │ MTTR │ Trend │ Status    │ Behavior│ │
+    │  │  1  │ Jakarta    │ 82.5% │ 1250m│ 📉    │ 🔴 Kritis │ Chronic │ │
+    │  │  2  │ Bekasi     │ 86.2% │ 980m │ 📉    │ 🔴 Kritis │ Deter.  │ │
+    │  │  3  │ Bandung    │ 90.1% │ 850m │ ─     │ 🟡 Perhat.│ Sporadic│ │
+    │  │  4  │ Tangerang  │ 91.5% │ 720m │ ─     │ 🟢 Baik   │ Healthy │ │
+    │  │  5  │ Bogor      │ 92.0% │ 680m │ 📈    │ 🟢 Baik   │ Improv. │ │
+    │  │  6  │ Depok      │ 93.2% │ 620m │ 📈    │ 🏆 S.Baik │ Healthy │ │
+    │  └────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ┌─── PREDIKTIF ─────────────────────────────────────────────────┐ │
+    │  │  Risk: 65 site HIGH (2.7%) | Worst: NOP Jakarta              │ │
+    │  │  Forecast: ~46.5K tiket bulan depan (+2.9%)                    │ │
+    │  │  SLA Projection: 87.8% (breach berlanjut)                      │ │
+    │  │  PM needed: 12 site minggu depan (est. 48 jam)                 │ │
+    │  └────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ┌─── REKOMENDASI ───────────────────────────────────────────────┐ │
+    │  │  🔴 1. SLA kritis + menurun → eskalasi ke Area Head           │ │
+    │  │     ▶ Fokus NOP Jakarta & Bekasi (menyumbang 60% masalah)     │ │
+    │  │     📊 Impact: +2.5pp SLA jika 2 NOP diperbaiki               │ │
+    │  │  🟡 2. MTTR naik → review proses repair NOP Jakarta            │ │
+    │  │  🟡 3. 12 site butuh PM minggu depan                           │ │
+    │  └────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  Footer: Dr. Adam M. | NOC-IS Analytics Platform v1.0                │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 5C. Report Card API
+
+    POST /api/report-card/generate
+      Input: {
+        entity_level: "regional",
+        entity_id: "R03",
+        period: "2025-07",
+      }
+      Output: {
+        entity: {name, level, parent, children_count, site_count},
+        overall_status: {status, icon, narrative},
+        kpis: {sla_pct, mttr, volume, escalation, auto_resolve, ...},
+        kpi_deltas: {sla_mom, mttr_mom, volume_mom, ...},
+        peer_rank: {rank, total, percentile, narrative},
+        behavior_mix: {chronic: 65, healthy: 2035, ...},
+        trend_3m: {
+          sla: [{period, value}, ...],
+          mttr: [{period, value}, ...],
+          volume: [{period, value}, ...],
+        },
+        trend_direction: {sla: "worsening", mttr: "worsening", volume: "stable"},
+        children: [{id, name, sla, mttr, trend, status, behavior}, ...],
+        predictive: {
+          risk_summary: {n_high, n_medium, n_low, worst},
+          forecast: {value, pct_change},
+          sla_projection: {projected, status},
+          pm_needed: {count, hours},
+        },
+        recommendations: [{priority, message, action, impact}, ...],
+        generated_at: "2025-07-28T10:30:00",
+      }
+
+### 5D. PDF Export
+
+    # File: backend/services/pdf_service.py
+    # Gunakan library: reportlab atau weasyprint
+    
+    def generate_report_card_pdf(report_data: dict) -> bytes:
+        """
+        Generate PDF Report Card dari data yang sama dengan UI.
+        Layout: A4 portrait, 1 halaman.
+        """
+        # Header
+        # - Logo + "REPORT CARD" + entity name + period
+        # - Status badge (colored box)
+        # - Executive narrative
+    
+        # Body: 2 kolom
+        # Left: Profil + Behavior mix
+        # Right: KPI table + Peer rank
+    
+        # Center: Trend sparklines (3 KPI × 3 bulan)
+    
+        # Table: Child ranking (semua children)
+    
+        # Predictive: 1 line summary
+    
+        # Recommendations: numbered list (max 5)
+    
+        # Footer: Author + timestamp + platform version
+    
+        return pdf_bytes
+    
+    
+    # API endpoint:
+    # GET /api/report-card/pdf?level=regional&id=R03&period=2025-07
+    # → Response: application/pdf
+
+* * *
+
+## 6. THRESHOLD SETTINGS PAGE
+
+### 6A. Konsep
+
+    Semua parameter analytics HARUS configurable tanpa ubah kode.
+    Settings > Analytics Parameters → form untuk semua threshold.
+    
+    Data disimpan di tabel master_threshold yang sudah ada (Prompt 3).
+    Jika belum ada record, gunakan default value.
+
+### 6B. Layout
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ⚙️ Settings > Analytics Parameters                                  │
+    │                                                                       │
+    │  ┌─── SLA ──────────────────────────────────────────────────────────┐│
+    │  │  SLA Target Default:          [90  ]%                             ││
+    │  │  SLA Warning (di bawah target): [2  ]pp                           ││
+    │  │  SLA Critical (di bawah target): [5  ]pp                          ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── MTTR ─────────────────────────────────────────────────────────┐│
+    │  │  MTTR Good:       [240  ] menit (4 jam)                           ││
+    │  │  MTTR Attention:  [720  ] menit (12 jam)                          ││
+    │  │  MTTR Slow:       [1440 ] menit (24 jam)                          ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Escalation ───────────────────────────────────────────────────┐│
+    │  │  Normal:    [3  ]%    Warning:  [7  ]%                            ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Auto-resolve ─────────────────────────────────────────────────┐│
+    │  │  Good:     [60 ]%    Moderate:  [40 ]%                            ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Repeat Incident ──────────────────────────────────────────────┐│
+    │  │  Normal:   [10 ]%    Warning:   [25 ]%                            ││
+    │  │  Window:   [7  ] hari (interval untuk dihitung repeat)            ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Trend ────────────────────────────────────────────────────────┐│
+    │  │  SLA Stable:     [0.5]pp/bulan                                    ││
+    │  │  MTTR Stable:    [5  ]%/bulan                                     ││
+    │  │  Volume Stable:  [3  ]%/bulan                                     ││
+    │  │  Decline Duration: [3] bulan (berturut = serius)                  ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Anomaly ──────────────────────────────────────────────────────┐│
+    │  │  Threshold:    |z| > [2  ]                                        ││
+    │  │  Significant:  |z| > [3  ]                                        ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Risk Score ───────────────────────────────────────────────────┐│
+    │  │  HIGH:    ≥ [70 ]    MEDIUM:  ≥ [40 ]                             ││
+    │  │  Device Economic Life: [7] tahun                                  ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Behavior ─────────────────────────────────────────────────────┐│
+    │  │  Chronic monthly min: [20] tiket (site), [500] (TO), [2000] (NOP)││
+    │  │  Chronic duration:    [3 ] bulan berturut                         ││
+    │  │  Seasonal peak factor: [1.3]× rata-rata                           ││
+    │  │  Pattern CV threshold: [0.5]                                      ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌─── Capacity ─────────────────────────────────────────────────────┐│
+    │  │  Alert threshold:    [90 ]% utilisasi                             ││
+    │  │  Max recommendations: [5  ] per Report Card                       ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │                                      [Reset Default] [💾 Simpan]     │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 6C. Storage
+
+    # Threshold disimpan di master_threshold (sudah ada dari Prompt 3).
+    # Format: category + parameter_name + value
+    
+    # API:
+    # GET  /api/settings/thresholds → return semua threshold + defaults
+    # PUT  /api/settings/thresholds → bulk update
+    # POST /api/settings/thresholds/reset → reset ke default
+    
+    # Backend: ThresholdService singleton yang cache threshold values.
+    # Semua service lain (BehaviorService, InterpretationService, 
+    # RecommendationEngine, RiskScoreService) membaca dari ThresholdService.
+
+* * *
+
+## 7. REACT COMPONENT STRUCTURE
+
+    frontend/src/pages/
+      ├── DashboardPage.jsx              ← /dashboard
+      ├── ReportCardPage.jsx             ← /report-card
+      └── SettingsPage.jsx               ← /settings (extended)
+    
+    frontend/src/components/dashboard/
+      ├── DashboardSelector.jsx          ← period + level + filter
+      ├── OverallStatusBanner.jsx        ← colored banner + narrative
+      ├── KpiSnapshotRow.jsx             ← 5 KPI cards compact
+      ├── EntityStatusTable.jsx          ← sortable table all children
+      ├── RecommendationPanel.jsx        ← grouped by priority
+      ├── QuickChartGrid.jsx             ← 2×2 grid: SLA trend, Volume trend, Risk dist, Behavior dist
+      └── SparklineChart.jsx             ← mini trend chart (reusable)
+    
+    frontend/src/components/report-card/
+      ├── ReportCardLayout.jsx           ← printable single-page layout
+      ├── StatusBadge.jsx                ← colored status box
+      ├── KpiCompactTable.jsx            ← KPI table with deltas
+      ├── ChildRankingTable.jsx          ← children sorted by SLA
+      ├── TrendSparklines.jsx            ← 3 sparklines (SLA, MTTR, Vol)
+      ├── PredictiveSummary.jsx          ← 1-line per metric
+      ├── RecommendationList.jsx         ← numbered list, max 5
+      └── PdfExportButton.jsx            ← download PDF
+    
+    frontend/src/components/settings/
+      └── ThresholdForm.jsx              ← grouped form fields
+
+* * *
+
+## 8. ROUTING UPDATE
+
+    // frontend/src/App.jsx
+    
+    <Routes>
+      <Route path="/dashboard" element={<DashboardPage />} />     {/* NEW */}
+      <Route path="/profiler" element={<ProfilerPage />} />
+      <Route path="/report-card" element={<ReportCardPage />} />   {/* NEW */}
+      <Route path="/upload" element={<UploadPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/" element={<Navigate to="/dashboard" />} />    {/* Default */}
+    </Routes>
+    
+    // Default landing page = Dashboard (bukan Profiler)
+
+* * *
+
+## CATATAN PENTING
+
+1. **Dashboard = gateway**: User pertama kali lihat Dashboard,lalu klik entity → masuk Profiler untuk deep-dive.
+  
+2. **Report Card = Profiler condensed**: Data yang sama, tampilan ringkas.Bisa diprint tanpa scroll. PDF = 1 halaman A4.
+  
+3. **Recommendation chaining**: R01+R05+R14 = 1 rekomendasi,bukan 3 terpisah. Mencegah information overload.
+  
+4. **Threshold centralized**: Semua service baca dari ThresholdService.Ubah 1 parameter → efek ke seluruh platform.
+  
+5. **PDF library**: Gunakan `weasyprint` (HTML→PDF) atau `reportlab`.WeasyPrint lebih mudah (render HTML yang sama dengan UI).Install: `pip install weasyprint --break-system-packages`
+  
+6. **Light mode konsisten**: Dashboard, Report Card, PDF semua light mode.
+  
+
+* * *
+
+## VALIDASI SETELAH SELESAI
+
+* [ ] Menu "Dashboard" di sidebar, sebagai default landing page
+* [ ] Dashboard selector: period + level + parent filter
+* [ ] Overall Status banner: 4 level (Kritis/Perhatian/Baik/Sangat Baik)
+* [ ] Status narrative auto-generated
+* [ ] 5 KPI snapshot cards dengan MoM delta
+* [ ] Entity Status Table: sortable, klik → Profiler
+* [ ] Top 5 Recommendations: grouped by priority, chained
+* [ ] Quick Charts: SLA trend, Volume trend, Risk dist, Behavior dist
+* [ ] Menu "Report Card" di sidebar
+* [ ] Report Card: 1 halaman compact layout per entity
+* [ ] Report Card API: POST /api/report-card/generate
+* [ ] PDF Export: GET /api/report-card/pdf → download A4 PDF
+* [ ] Print button: browser print-friendly CSS
+* [ ] Settings > Analytics Parameters page
+* [ ] Semua threshold editable + reset to default
+* [ ] ThresholdService: singleton cache, used by all services
+* [ ] Recommendation Engine: all 20 rules implemented
+* [ ] Recommendation chaining: related rules grouped
+* [ ] Recommendation dedup: parent-child tidak tumpang tindih
+* [ ] Dashboard data source: summary_monthly ONLY
+* [ ] Report Card footer: "Dr. Adam M."

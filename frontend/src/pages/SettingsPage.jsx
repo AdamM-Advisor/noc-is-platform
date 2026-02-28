@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Database, HardDrive, RotateCcw, Download, CheckCircle, XCircle, TableProperties } from 'lucide-react';
+import { Database, HardDrive, RotateCcw, Download, CheckCircle, XCircle, TableProperties, SlidersHorizontal } from 'lucide-react';
 import client from '../api/client';
 import LoadingWrapper from '../components/LoadingWrapper';
 import DangerZone from '../components/DangerZone';
+import ThresholdForm from '../components/settings/ThresholdForm';
 
 const TABLE_GROUPS = {
   "Master Tables": [
@@ -17,7 +18,13 @@ const TABLE_GROUPS = {
   ],
 };
 
+const TABS = [
+  { key: 'system', label: 'System', icon: Database },
+  { key: 'threshold', label: 'Threshold', icon: SlidersHorizontal },
+];
+
 function SettingsPage() {
+  const [activeTab, setActiveTab] = useState('system');
   const [dbInfo, setDbInfo] = useState(null);
   const [health, setHealth] = useState(null);
   const [backups, setBackups] = useState([]);
@@ -121,10 +128,38 @@ function SettingsPage() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-6">Settings</h2>
+      <h2 className="text-xl font-bold text-gray-800 mb-4">Settings</h2>
 
-      <LoadingWrapper loading={loading} error={error} onRetry={fetchData}>
-        <div className="space-y-6">
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === key
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Icon size={16} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'threshold' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="font-semibold text-gray-800 text-sm mb-4 flex items-center gap-2">
+            <SlidersHorizontal size={18} className="text-blue-600" />
+            Threshold Configuration
+          </h3>
+          <ThresholdForm />
+        </div>
+      )}
+
+      {activeTab === 'system' && (
+        <LoadingWrapper loading={loading} error={error} onRetry={fetchData}>
+          <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -271,7 +306,8 @@ function SettingsPage() {
             loading={actionLoading}
           />
         </div>
-      </LoadingWrapper>
+        </LoadingWrapper>
+      )}
     </div>
   );
 }

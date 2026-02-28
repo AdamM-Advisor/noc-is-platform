@@ -36,6 +36,10 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
     - Zustand stores (`cacheStore`, `profilerStore`) manage application state and cache data with a 5-minute TTL.
 
 **Feature Specifications:**
+- **Dashboard Overview**: Full operational dashboard with period/level/filter selectors. Shows overall status (KRITIS/PERLU PERHATIAN/BAIK/SANGAT BAIK), KPI snapshot (Volume, SLA, MTTR, Escalation, Auto-resolve with MoM deltas), entity status table with sorting and "Lihat Profil" drill-down, recommendation panel (R01-R20 rules with chaining/dedup, prioritized as SEGERA/MINGGU_INI/BULAN_INI/RUTIN), and quick charts (SLA trend, volume trend, risk distribution, behavior distribution).
+- **Report Card**: Generates per-entity report cards with printable layout. Includes entity profile, KPI table with deltas, 3-month trend sparklines, child ranking table, and recommendations. Supports Area/Regional/NOP/TO levels.
+- **Recommendation Engine**: 20 rules (R01-R20) covering SLA, MTTR, Volume, Risk, Escalation, Trend, Device, and Positive categories. Supports chain merging (e.g., R01+R05+R14 = single combined recommendation) and category-priority deduplication. Max 5 recommendations per entity.
+- **Threshold Settings**: Configurable threshold parameters organized in 12 groups (MTTR, Escalation, Auto-resolve, Repeat, Trend, Anomaly, Risk, Behavior, Seasonal, Pattern, Capacity, Display). Accessible via Settings → Threshold tab.
 - **Data Ingestion**: Supports single and chunked file uploads. Auto-detects 5 file types based on filename and headers. Normalizes headers to snake_case.
 - **Data Processing**:
     - **Site Master**: Auto-populates hierarchy (Regional, NOP, TO) and enriches sites based on rules. Supports bulk updates and imports.

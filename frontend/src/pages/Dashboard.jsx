@@ -1,72 +1,103 @@
-import { useState, useEffect } from 'react';
-import { BarChart3, Upload } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import client from '../api/client';
-import LoadingWrapper from '../components/LoadingWrapper';
+import { useEffect } from 'react';
+import { BarChart3, RefreshCw } from 'lucide-react';
+import useDashboardStore from '../stores/dashboardStore';
+import DashboardSelector from '../components/dashboard/DashboardSelector';
+import OverallStatusBanner from '../components/dashboard/OverallStatusBanner';
+import KpiSnapshotRow from '../components/dashboard/KpiSnapshotRow';
+import EntityStatusTable from '../components/dashboard/EntityStatusTable';
+import RecommendationPanel from '../components/dashboard/RecommendationPanel';
+import QuickChartGrid from '../components/dashboard/QuickChartGrid';
 
 function Dashboard() {
-  const [health, setHealth] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const navigate = useNavigate();
-
-  const fetchHealth = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await client.get('/health');
-      setHealth(res.data);
-    } catch (err) {
-      setError('Gagal memuat status sistem.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    period, periods, viewLevel, parentFilter, parentOptions,
+    data, loading, error,
+    setPeriod, setViewLevel, setParentFilter,
+    fetchPeriods, fetchParentOptions, fetchDashboard,
+  } = useDashboardStore();
 
   useEffect(() => {
-    fetchHealth();
+    fetchPeriods();
   }, []);
 
+  useEffect(() => {
+    if (period) fetchDashboard();
+  }, [period, viewLevel, parentFilter]);
+
+  useEffect(() => {
+    fetchParentOptions();
+  }, [viewLevel]);
+
   return (
-    <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-6">Dashboard</h2>
-
-      <LoadingWrapper loading={loading} error={error} onRetry={fetchHealth}>
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-          <BarChart3 size={48} className="mx-auto text-blue-500 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">Platform siap</h3>
-          <p className="text-gray-500 text-sm mb-6">
-            Upload data untuk memulai analisis.
-          </p>
-          <button
-            onClick={() => navigate('/upload')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Upload size={16} />
-            Upload Data
-          </button>
-        </div>
-
-        {health && (
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <p className="text-xs text-gray-500 mb-1">Status</p>
-              <p className="text-sm font-semibold flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${health.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
-                {health.status === 'healthy' ? 'Healthy' : health.status}
-              </p>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <p className="text-xs text-gray-500 mb-1">Database</p>
-              <p className="text-sm font-semibold">{health.database?.size_mb} MB</p>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <p className="text-xs text-gray-500 mb-1">Backups</p>
-              <p className="text-sm font-semibold">{health.disk?.backup_count} file</p>
-            </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <BarChart3 size={22} className="text-blue-600" />
+            <h2 className="text-xl font-bold text-gray-800">Dashboard NOC-IS</h2>
           </div>
-        )}
-      </LoadingWrapper>
+          <p className="text-xs text-gray-400 mt-0.5">Author: Dr. Adam M.</p>
+        </div>
+      </div>
+
+      <DashboardSelector
+        period={period}
+        periods={periods}
+        viewLevel={viewLevel}
+        parentFilter={parentFilter}
+        parentOptions={parentOptions}
+        onPeriodChange={(p) => setPeriod(p)}
+        onLevelChange={(l) => { setViewLevel(l); }}
+        onParentChange={(f) => setParentFilter(f)}
+        onRefresh={fetchDashboard}
+      />
+
+      {loading && (
+        <div className="flex items-center justify-center py-12 text-gray-400">
+          <RefreshCw size={24} className="animate-spin mr-2" /> Memuat dashboard...
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {data && !loading && (
+        <>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Status Keseluruhan</p>
+            <OverallStatusBanner status={data.overall_status} />
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">KPI Snapshot</p>
+            <KpiSnapshotRow kpis={data.kpi_snapshot} />
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Child Entities Status Map
+            </p>
+            <EntityStatusTable entities={data.entities} viewLevel={viewLevel} />
+          </div>
+
+          {data.recommendations?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Top {data.recommendations.length} Rekomendasi
+              </p>
+              <RecommendationPanel recommendations={data.recommendations} />
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Charts</p>
+            <QuickChartGrid charts={data.charts} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

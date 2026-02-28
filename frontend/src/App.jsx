@@ -6,6 +6,7 @@ import UploadPage from './pages/UploadPage';
 import MasterDataPage from './pages/MasterDataPage';
 import ExternalDataPage from './pages/ExternalDataPage';
 import SettingsPage from './pages/SettingsPage';
+import ReportCardPage from './pages/ReportCardPage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profiler" element={<ProfilerPage />} />
+          <Route path="report-card" element={<ReportCardPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="master-data" element={<MasterDataPage />} />
           <Route path="external-data" element={<ExternalDataPage />} />
