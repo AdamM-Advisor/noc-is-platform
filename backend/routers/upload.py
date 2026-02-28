@@ -203,7 +203,7 @@ def _run_processing(job_id, file_path, filename, file_type_override):
 
         if file_type == "site_master":
             from backend.services.site_master_processor import process_site_master
-            result = process_site_master(file_path)
+            result = process_site_master(file_path, progress_callback=update_progress)
             _log_site_master_import(filename, file_path, result)
         else:
             from backend.services.ticket_processor import process_ticket_file

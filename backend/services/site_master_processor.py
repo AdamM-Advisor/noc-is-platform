@@ -17,8 +17,85 @@ def _slugify(name: str) -> str:
     return s
 
 
-def process_site_master(file_path: str) -> dict:
+def _vectorized_enrich(df: pd.DataFrame) -> pd.DataFrame:
+    cls = df["site_class"]
+    flag = df["site_flag"]
+
+    df["site_category"] = "Non-Komersial"
+    df.loc[flag == "Site Reguler", "site_category"] = "Komersial"
+
+    df["site_sub_class"] = cls
+    df.loc[flag == "No BTS", "site_sub_class"] = "No BTS"
+    df.loc[flag == "3T", "site_sub_class"] = cls + "-3T"
+    df.loc[flag == "USO/MP", "site_sub_class"] = cls + "-USO"
+    df.loc[flag == "Femto", "site_sub_class"] = cls + "-Femto"
+
+    df["est_technology"] = "N/A"
+    df.loc[flag == "No BTS", "est_technology"] = "Tidak Ada BTS"
+    df.loc[cls.isin(["Diamond", "Platinum"]) & (flag != "No BTS"), "est_technology"] = "Multi (2G/3G/4G/5G)"
+    df.loc[cls.isin(["Gold", "Silver"]) & (flag != "No BTS"), "est_technology"] = "Multi (2G/3G/4G)"
+    df.loc[(cls == "Bronze") & (flag == "Site Reguler"), "est_technology"] = "Limited (4G / 2G+4G)"
+    df.loc[(cls == "Bronze") & flag.isin(["3T", "USO/MP"]), "est_technology"] = "Single (4G LTE)"
+    df.loc[(cls == "Bronze") & (flag == "Femto"), "est_technology"] = "Single (4G Femto)"
+
+    df["est_transmission"] = "N/A"
+    df.loc[flag == "No BTS", "est_transmission"] = "Tidak Ada"
+    df.loc[cls.isin(["Diamond", "Platinum"]) & (flag != "No BTS"), "est_transmission"] = "Fiber Optic + Microwave"
+    df.loc[cls.isin(["Gold", "Silver"]) & (flag != "No BTS"), "est_transmission"] = "Fiber Optic atau Microwave"
+    df.loc[(cls == "Bronze") & (flag == "Site Reguler"), "est_transmission"] = "Microwave"
+    df.loc[(cls == "Bronze") & flag.isin(["3T", "USO/MP"]), "est_transmission"] = "VSAT atau Microwave"
+    df.loc[(cls == "Bronze") & (flag == "Femto"), "est_transmission"] = "WiFi Backhaul / VSAT"
+
+    df["est_power"] = "N/A"
+    df.loc[flag == "No BTS", "est_power"] = "Tidak Ada"
+    df.loc[cls.isin(["Diamond", "Platinum"]) & (flag != "No BTS"), "est_power"] = "PLN + Genset + Baterai (redundan)"
+    df.loc[cls.isin(["Gold", "Silver"]) & (flag != "No BTS"), "est_power"] = "PLN + Baterai"
+    df.loc[(cls == "Bronze") & (flag == "Site Reguler"), "est_power"] = "PLN + Baterai (minimal)"
+    df.loc[(cls == "Bronze") & flag.isin(["3T", "USO/MP"]), "est_power"] = "Solar Panel + Baterai"
+    df.loc[(cls == "Bronze") & (flag == "Femto"), "est_power"] = "PLN (rumah/gedung)"
+
+    df["est_sector"] = "N/A"
+    df.loc[flag == "No BTS", "est_sector"] = "Tidak Ada"
+    df.loc[cls.isin(["Diamond", "Platinum"]) & (flag != "No BTS"), "est_sector"] = "3+ Sektor (directional)"
+    df.loc[cls.isin(["Gold", "Silver"]) & (flag != "No BTS"), "est_sector"] = "3 Sektor"
+    df.loc[(cls == "Bronze") & (flag == "Site Reguler"), "est_sector"] = "1-2 Sektor"
+    df.loc[(cls == "Bronze") & flag.isin(["3T", "USO/MP", "Femto"]), "est_sector"] = "Omni (360\u00b0)"
+
+    df["complexity_level"] = 0
+    df.loc[cls.isin(["Diamond", "Platinum"]) & (flag != "No BTS"), "complexity_level"] = 5
+    df.loc[cls.isin(["Gold", "Silver"]) & (flag != "No BTS"), "complexity_level"] = 4
+    df.loc[(cls == "Bronze") & (flag == "Site Reguler"), "complexity_level"] = 3
+    df.loc[(cls == "Bronze") & flag.isin(["3T", "USO/MP"]), "complexity_level"] = 2
+    df.loc[(cls == "Bronze") & (flag == "Femto"), "complexity_level"] = 1
+
+    opex_map = {5: "Very High", 4: "High", 3: "Medium", 2: "Low", 1: "Very Low", 0: "N/A"}
+    df["est_opex_level"] = df["complexity_level"].map(opex_map).fillna("N/A")
+
+    df["upgrade_potential"] = "N/A"
+    df.loc[cls.isin(["Diamond", "Platinum"]), "upgrade_potential"] = "N/A (Tertinggi)"
+    df.loc[cls == "Gold", "upgrade_potential"] = "Low"
+    df.loc[cls == "Silver", "upgrade_potential"] = "Medium"
+    df.loc[cls == "Bronze", "upgrade_potential"] = "High"
+
+    df["strategy_focus"] = "N/A"
+    df.loc[flag == "No BTS", "strategy_focus"] = "Non-Applicable"
+    df.loc[cls.isin(["Diamond", "Platinum"]) & (flag != "No BTS"), "strategy_focus"] = "Capacity & Quality Management"
+    df.loc[cls.isin(["Gold", "Silver"]) & (flag != "No BTS"), "strategy_focus"] = "Reliability & Optimization"
+    df.loc[(cls == "Bronze") & (flag == "Site Reguler"), "strategy_focus"] = "OPEX Efficiency"
+    df.loc[(cls == "Bronze") & flag.isin(["3T", "USO/MP"]), "strategy_focus"] = "Availability & Access"
+    df.loc[(cls == "Bronze") & (flag == "Femto"), "strategy_focus"] = "Monitoring Minimal"
+
+    return df
+
+
+def process_site_master(file_path: str, progress_callback=None) -> dict:
     start_time = time.time()
+
+    def update(phase, detail="", row=0, total=0):
+        if progress_callback:
+            progress_callback(phase, detail, row, total)
+
+    update("reading", "Membaca file...")
 
     ext = os.path.splitext(file_path)[1].lower()
     if ext in ('.xlsx', '.xls'):
@@ -30,6 +107,9 @@ def process_site_master(file_path: str) -> dict:
     else:
         raise ValueError(f"Unsupported file type: {ext}")
 
+    total_rows = len(df)
+    update("reading", f"File dibaca: {total_rows} baris", 0, total_rows)
+
     result = normalize_headers(df, "upper_case")
     df = result["df"]
 
@@ -38,89 +118,99 @@ def process_site_master(file_path: str) -> dict:
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
+    df["site_id"] = df["site_id"].astype(str).str.strip()
+    df["site_name"] = df["site_name"].astype(str).str.strip()
+    df["site_class"] = df["site_class"].astype(str).str.strip()
+    df["site_flag"] = df["site_flag"].astype(str).str.strip()
+
+    df = df[df["site_id"].str.len() > 0].copy()
+
+    update("processing", "Auto-populasi hierarki...", 0, total_rows)
     _auto_populate_hierarchy(df)
 
-    regional_map = _load_regional_map()
-    nop_map = _load_nop_map()
+    update("processing", "Memetakan TO...", 0, total_rows)
     to_map = _load_to_map()
+    if "sitearea_to" in df.columns:
+        df["sitearea_to"] = df["sitearea_to"].astype(str).str.strip()
+        df["to_id"] = df["sitearea_to"].map(to_map)
+    else:
+        df["to_id"] = None
 
-    inserted = 0
-    updated = 0
-    orphans = {"regional": 0, "nop": 0, "to": 0}
-    enriched_count = 0
+    orphan_to = 0
+    if "sitearea_to" in df.columns:
+        has_to_name = df["sitearea_to"].notna() & (df["sitearea_to"] != "") & (df["sitearea_to"] != "nan")
+        no_to_id = df["to_id"].isna()
+        orphan_to = int((has_to_name & no_to_id).sum())
+
+    update("processing", "Enrichment data site...", 0, total_rows)
+    df = _vectorized_enrich(df)
+
+    update("writing", "Menyimpan ke database...", 0, total_rows)
+
+    cols = ["site_id", "site_name", "to_id", "site_class", "site_flag",
+            "site_category", "site_sub_class", "upgrade_potential",
+            "est_technology", "est_transmission", "est_power",
+            "est_sector", "complexity_level", "est_opex_level",
+            "strategy_focus"]
+    insert_df = df[cols].copy()
+    insert_df["complexity_level"] = insert_df["complexity_level"].astype(int)
+    insert_df = insert_df.drop_duplicates(subset=["site_id"], keep="last")
 
     with get_write_connection() as conn:
-        for _, row in df.iterrows():
-            site_id = str(row.get("site_id", "")).strip()
-            if not site_id:
-                continue
+        conn.register("site_staging", insert_df)
 
-            site_name = str(row.get("site_name", "")).strip()
-            site_class = str(row.get("site_class", "")).strip()
-            site_flag = str(row.get("site_flag", "")).strip()
+        overlap = conn.execute("""
+            SELECT COUNT(*) FROM site_staging s
+            WHERE EXISTS (SELECT 1 FROM master_site m WHERE m.site_id = s.site_id)
+        """).fetchone()[0]
 
-            to_id = None
-            id_region = str(row.get("id_region_network", "")).strip()
-            nop_name_val = str(row.get("nop_name", "")).strip()
-            to_name_val = str(row.get("sitearea_to", "")).strip()
+        conn.execute("""
+            INSERT INTO master_site (
+                site_id, site_name, to_id, site_class, site_flag,
+                site_category, site_sub_class, upgrade_potential,
+                est_technology, est_transmission, est_power,
+                est_sector, complexity_level, est_opex_level,
+                strategy_focus
+            )
+            SELECT
+                site_id, site_name, to_id, site_class, site_flag,
+                site_category, site_sub_class, upgrade_potential,
+                est_technology, est_transmission, est_power,
+                est_sector, complexity_level, est_opex_level,
+                strategy_focus
+            FROM site_staging
+            ON CONFLICT (site_id) DO UPDATE SET
+                site_name = EXCLUDED.site_name,
+                to_id = EXCLUDED.to_id,
+                site_class = EXCLUDED.site_class,
+                site_flag = EXCLUDED.site_flag,
+                site_category = EXCLUDED.site_category,
+                site_sub_class = EXCLUDED.site_sub_class,
+                upgrade_potential = EXCLUDED.upgrade_potential,
+                est_technology = EXCLUDED.est_technology,
+                est_transmission = EXCLUDED.est_transmission,
+                est_power = EXCLUDED.est_power,
+                est_sector = EXCLUDED.est_sector,
+                complexity_level = EXCLUDED.complexity_level,
+                est_opex_level = EXCLUDED.est_opex_level,
+                strategy_focus = EXCLUDED.strategy_focus
+        """)
 
-            if to_name_val and to_name_val in to_map:
-                to_id = to_map[to_name_val]
-            elif to_name_val:
-                orphans["to"] += 1
+        conn.unregister("site_staging")
 
-            enrichment = enrich_site(site_class, site_flag)
-            enriched_count += 1
+    unique_count = len(insert_df)
+    updated = overlap
+    inserted = unique_count - overlap
 
-            exists = conn.execute(
-                "SELECT COUNT(*) FROM master_site WHERE site_id = ?", [site_id]
-            ).fetchone()[0]
-
-            if exists:
-                conn.execute("""
-                    UPDATE master_site SET
-                        site_name = ?, to_id = ?, site_class = ?, site_flag = ?,
-                        site_category = ?, site_sub_class = ?, upgrade_potential = ?,
-                        est_technology = ?, est_transmission = ?, est_power = ?,
-                        est_sector = ?, complexity_level = ?, est_opex_level = ?,
-                        strategy_focus = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE site_id = ?
-                """, [
-                    site_name, to_id, site_class, site_flag,
-                    enrichment["site_category"], enrichment["site_sub_class"],
-                    enrichment["upgrade_potential"], enrichment["est_technology"],
-                    enrichment["est_transmission"], enrichment["est_power"],
-                    enrichment["est_sector"], enrichment["complexity_level"],
-                    enrichment["est_opex_level"], enrichment["strategy_focus"],
-                    site_id,
-                ])
-                updated += 1
-            else:
-                conn.execute("""
-                    INSERT INTO master_site (
-                        site_id, site_name, to_id, site_class, site_flag,
-                        site_category, site_sub_class, upgrade_potential,
-                        est_technology, est_transmission, est_power,
-                        est_sector, complexity_level, est_opex_level,
-                        strategy_focus
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    site_id, site_name, to_id, site_class, site_flag,
-                    enrichment["site_category"], enrichment["site_sub_class"],
-                    enrichment["upgrade_potential"], enrichment["est_technology"],
-                    enrichment["est_transmission"], enrichment["est_power"],
-                    enrichment["est_sector"], enrichment["complexity_level"],
-                    enrichment["est_opex_level"], enrichment["strategy_focus"],
-                ])
-                inserted += 1
+    update("completed", "Selesai", total_rows, total_rows)
 
     duration = round(time.time() - start_time, 2)
     return {
-        "total": len(df),
+        "total": total_rows,
         "inserted": inserted,
         "updated": updated,
-        "orphans": orphans,
-        "enriched": enriched_count,
+        "orphans": {"regional": 0, "nop": 0, "to": orphan_to},
+        "enriched": total_rows,
         "duration_sec": duration,
     }
 
