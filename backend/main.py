@@ -11,6 +11,7 @@ from backend.routers import profiler
 from backend.routers import gangguan
 from backend.routers import predictive
 from backend.routers import dashboard, report_card
+from backend.routers import saved_views, comparison
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,12 +46,18 @@ app.include_router(gangguan.router, prefix="/api")
 app.include_router(predictive.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(report_card.router, prefix="/api")
+app.include_router(saved_views.router, prefix="/api")
+app.include_router(comparison.router, prefix="/api")
 
 
 @app.on_event("startup")
 async def startup():
     init_database()
     from backend.services.schema_service import initialize_schema, get_schema_status
+    from backend.services.schema_service import _migrate_saved_views
+    from backend.database import get_write_connection
+    with get_write_connection() as wconn:
+        _migrate_saved_views(wconn)
     status = get_schema_status()
     if not status["initialized"]:
         result = initialize_schema()

@@ -296,20 +296,34 @@ TABLES_DDL = [
     ("saved_views", """
         CREATE TABLE IF NOT EXISTS saved_views (
             id INTEGER PRIMARY KEY,
-            name VARCHAR NOT NULL,
-            description VARCHAR,
-            entity_level VARCHAR NOT NULL,
-            entity_id VARCHAR NOT NULL,
-            time_granularity VARCHAR,
-            time_from DATE,
-            time_to DATE,
-            fault_filter VARCHAR,
-            snapshot_data VARCHAR NOT NULL,
-            snapshot_summary VARCHAR,
-            tags VARCHAR,
-            is_pinned BOOLEAN DEFAULT FALSE,
+            name VARCHAR(200) NOT NULL,
+            description TEXT,
+            entity_level VARCHAR(20) NOT NULL,
+            entity_id VARCHAR(50) NOT NULL,
+            entity_name VARCHAR(200),
+            granularity VARCHAR(20) NOT NULL DEFAULT 'monthly',
+            date_from VARCHAR(10),
+            date_to VARCHAR(10),
+            type_ticket VARCHAR(20),
+            severities TEXT,
+            fault_level VARCHAR(100),
+            rc_category VARCHAR(100),
+            snapshot_sla REAL,
+            snapshot_mttr REAL,
+            snapshot_volume INTEGER,
+            snapshot_escalation REAL,
+            snapshot_auto_resolve REAL,
+            snapshot_repeat REAL,
+            snapshot_behavior VARCHAR(30),
+            snapshot_status VARCHAR(30),
+            snapshot_risk_score REAL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_accessed_at TIMESTAMP,
+            access_count INTEGER DEFAULT 0,
+            is_pinned BOOLEAN DEFAULT FALSE,
+            sort_order INTEGER DEFAULT 0,
+            url_params TEXT
         )
     """),
     ("report_history", """
@@ -543,9 +557,24 @@ SEED_THRESHOLD = """
 ALL_TABLE_NAMES = [name for name, _ in TABLES_DDL]
 
 
+def _migrate_saved_views(conn):
+    try:
+        cols = [r[0] for r in conn.execute("DESCRIBE saved_views").fetchall()]
+        if "entity_name" not in cols:
+            conn.execute("DROP TABLE IF EXISTS saved_views")
+            for name, ddl in TABLES_DDL:
+                if name == "saved_views":
+                    conn.execute(ddl)
+                    break
+            logger.info("Migrated saved_views table to new schema")
+    except Exception:
+        pass
+
+
 def initialize_schema():
     tables_created = []
     with get_write_connection() as conn:
+        _migrate_saved_views(conn)
         for name, ddl in TABLES_DDL:
             conn.execute(ddl)
             tables_created.append(name)

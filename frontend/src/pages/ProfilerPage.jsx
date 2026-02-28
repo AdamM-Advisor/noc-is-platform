@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, ArrowUpDown } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, ArrowUpDown, Bookmark, GitCompare, FileText } from 'lucide-react';
 import useProfilerStore from '../stores/profilerStore';
 import TemporalPanel from '../components/profiler/TemporalPanel';
 import GangguanPanel from '../components/profiler/GangguanPanel';
 import PredictivePanel from '../components/profiler/predictive/PredictivePanel';
+import SaveDialog from '../components/saved-views/SaveDialog';
 
 const LEVEL_OPTIONS = [
   { value: 'area', label: 'Area' },
@@ -112,6 +113,8 @@ function TrendIcon({ direction }) {
 
 export default function ProfilerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   const {
     filters, setFilters, resetFilters,
     filterOptions, fetchFilterOptions,
@@ -183,6 +186,39 @@ export default function ProfilerPage() {
         onGenerate={handleGenerate}
         onReset={handleReset}
         loading={profileLoading}
+      />
+
+      {profileData && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowSaveDialog(true)}
+            className="border border-blue-300 text-blue-700 bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 flex items-center gap-2"
+          >
+            <Bookmark size={16} />
+            Simpan View
+          </button>
+          <button
+            onClick={() => navigate(`/comparison?level=${filters.entityLevel}&id=${filters.entityId}&from=${filters.dateFrom || ''}&to=${filters.dateTo || ''}`)}
+            className="border border-purple-300 text-purple-700 bg-purple-50 px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-100 flex items-center gap-2"
+          >
+            <GitCompare size={16} />
+            Bandingkan
+          </button>
+          <button
+            onClick={() => navigate(`/report-card?level=${filters.entityLevel}&id=${filters.entityId}&from=${filters.dateFrom || ''}&to=${filters.dateTo || ''}`)}
+            className="border border-gray-300 text-gray-700 bg-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-2"
+          >
+            <FileText size={16} />
+            Report Card
+          </button>
+        </div>
+      )}
+
+      <SaveDialog
+        open={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        filters={filters}
+        profileData={profileData}
       />
 
       {profileError && (

@@ -7,6 +7,8 @@ import MasterDataPage from './pages/MasterDataPage';
 import ExternalDataPage from './pages/ExternalDataPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportCardPage from './pages/ReportCardPage';
+import SavedViewsPage from './pages/SavedViewsPage';
+import ComparisonPage from './pages/ComparisonPage';
 
 function App() {
   return (
@@ -17,6 +19,8 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profiler" element={<ProfilerPage />} />
           <Route path="report-card" element={<ReportCardPage />} />
+          <Route path="saved-views" element={<SavedViewsPage />} />
+          <Route path="comparison" element={<ComparisonPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="master-data" element={<MasterDataPage />} />
           <Route path="external-data" element={<ExternalDataPage />} />

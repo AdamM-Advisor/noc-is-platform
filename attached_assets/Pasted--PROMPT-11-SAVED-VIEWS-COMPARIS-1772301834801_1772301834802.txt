@@ -1,0 +1,758 @@
+# ============================================================
+
+# PROMPT 11 — SAVED VIEWS & COMPARISON MODE
+
+# NOC-IS Analytics Platform v1.0
+
+# Author: Dr. Adam M.
+
+# ============================================================
+
+#
+
+# PRASYARAT:
+
+# Prompt 0-7, 9-10 sudah dijalankan
+
+# Dashboard, Profiler, Report Card sudah ada
+
+#
+
+# HASIL YANG DIHARAPKAN:
+
+# ✅ Saved Views — simpan konfigurasi Profiler untuk akses cepat
+
+# ✅ Snapshot — simpan state data saat save (historical audit)
+
+# ✅ Comparison Mode — side-by-side 2 profil se-level
+
+# ✅ Delta Analysis — otomatis hitung perbedaan + narasi
+
+# ✅ Radar Overlay — 2 entity pada 1 radar chart
+
+# ✅ Composition-aware comparison (normalisasi jika komposisi berbeda)
+
+# ============================================================
+
+Lanjutkan pembangunan **NOC-IS Analytics Platform**. Dashboard dan Profiler sudah lengkap. Sekarang bangun fitur **Saved Views** dan **Comparison Mode**.
+
+* * *
+
+## 1. SAVED VIEWS
+
+### 1A. Konsep
+
+    Saved View = konfigurasi Profiler yang disimpan untuk akses cepat.
+    
+    User yang sering melihat profil tertentu (misal "R03 Jabar, Bulanan, 
+    Link Failure") tidak perlu mengatur selector setiap kali.
+    
+    Saved View menyimpan:
+      1. Selector state (entity + time + fault filters)
+      2. Snapshot KPI saat disimpan (untuk tracking perubahan)
+      3. Nama + deskripsi user
+      4. Timestamp simpan
+    
+    BUKAN bookmark browser. Saved View ada di database,
+    bisa diakses dari menu, dan menyimpan snapshot data.
+
+### 1B. Database Schema
+
+    CREATE TABLE saved_views (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name VARCHAR(200) NOT NULL,
+        description TEXT,
+    
+        -- Selector State
+        entity_level VARCHAR(20) NOT NULL,
+        entity_id VARCHAR(50) NOT NULL,
+        entity_name VARCHAR(200),
+        granularity VARCHAR(20) NOT NULL DEFAULT 'monthly',
+        date_from VARCHAR(10),
+        date_to VARCHAR(10),
+        type_ticket VARCHAR(20),
+        severities TEXT,            -- JSON array: ["Critical","Major"]
+        fault_level VARCHAR(100),
+        rc_category VARCHAR(100),
+    
+        -- Snapshot KPI (saat disimpan)
+        snapshot_sla REAL,
+        snapshot_mttr REAL,
+        snapshot_volume INTEGER,
+        snapshot_escalation REAL,
+        snapshot_auto_resolve REAL,
+        snapshot_repeat REAL,
+        snapshot_behavior VARCHAR(30),
+        snapshot_status VARCHAR(30),
+        snapshot_risk_score REAL,
+    
+        -- Metadata
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_accessed_at TIMESTAMP,
+        access_count INTEGER DEFAULT 0,
+        is_pinned BOOLEAN DEFAULT FALSE,
+        sort_order INTEGER DEFAULT 0,
+    
+        -- URL reconstruction
+        url_params TEXT              -- full URL query string for direct navigation
+    );
+    
+    CREATE INDEX idx_saved_views_pinned ON saved_views(is_pinned DESC, sort_order ASC);
+    CREATE INDEX idx_saved_views_accessed ON saved_views(last_accessed_at DESC);
+
+### 1C. Saved Views UI
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  📌 Saved Views                                   [+ Simpan View Baru]│
+    │                                                                       │
+    │  ── Pinned ──────────────────────────────────────────────────────── │
+    │  ┌────────────────────────────────────────────────────────────────┐  │
+    │  │ 📌 R03 Jabar — Link Failure Bulanan                            │  │
+    │  │    SLA saat disimpan: 82.5% → Sekarang: 84.0% (▲ +1.5pp)      │  │
+    │  │    Terakhir dilihat: 2 jam lalu                                │  │
+    │  │    [Buka →] [⚖️ Compare] [✏️ Edit] [🗑️]                       │  │
+    │  ├────────────────────────────────────────────────────────────────┤  │
+    │  │ 📌 NOP Jakarta — Semua Gangguan Mingguan                       │  │
+    │  │    SLA saat disimpan: 87.5% → Sekarang: 88.2% (▲ +0.7pp)      │  │
+    │  │    Terakhir dilihat: kemarin                                   │  │
+    │  │    [Buka →] [⚖️ Compare] [✏️ Edit] [🗑️]                       │  │
+    │  └────────────────────────────────────────────────────────────────┘  │
+    │                                                                       │
+    │  ── Recent ──────────────────────────────────────────────────────── │
+    │  ┌────────────────────────────────────────────────────────────────┐  │
+    │  │    TO JKT-1 — Semua Gangguan Bulanan                           │  │
+    │  │    Disimpan: 3 hari lalu | SLA: 85.2% → 85.8%                 │  │
+    │  │    [Buka →] [⚖️ Compare] [📌 Pin] [✏️] [🗑️]                   │  │
+    │  ├────────────────────────────────────────────────────────────────┤  │
+    │  │    Area Barat — Triwulan Q2 2025                                │  │
+    │  │    Disimpan: 1 minggu lalu | SLA: 90.1% → 89.8%               │  │
+    │  │    [Buka →] [⚖️ Compare] [📌 Pin] [✏️] [🗑️]                   │  │
+    │  └────────────────────────────────────────────────────────────────┘  │
+    │                                                                       │
+    │  Menampilkan 4 dari 12 saved views    [Lihat semua →]                │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 1D. Save Dialog
+
+    Saat user klik "💾 Simpan View" di Profiler:
+    
+    ┌─── Simpan View ────────────────────────────────────┐
+    │                                                      │
+    │  Nama:  [R03 Jabar — Link Failure Bulanan    ]      │
+    │  Desc:  [Monitoring link failure di R03      ]      │
+    │                                                      │
+    │  Akan disimpan:                                      │
+    │  📍 Regional R03 Jabar                               │
+    │  🕐 Bulanan, Jan 2025 - Jul 2025                    │
+    │  🔧 Fault: Link Failure                              │
+    │                                                      │
+    │  Snapshot KPI saat ini:                              │
+    │  SLA: 84.0% | MTTR: 1.120m | Volume: 45.2K          │
+    │  Status: 🟡 Perlu Perhatian | Behavior: Chronic      │
+    │                                                      │
+    │  [✓ Pin ke atas]                                     │
+    │                                                      │
+    │                         [Batal] [💾 Simpan]          │
+    └──────────────────────────────────────────────────────┘
+    
+    Saat user klik "Buka →" pada saved view:
+      → Navigate ke Profiler dengan URL params dari saved view
+      → Update last_accessed_at dan access_count
+      → Jika KPI sekarang berbeda dari snapshot:
+        tampilkan delta badge di UI (▲ +1.5pp atau ▼ -0.8pp)
+
+### 1E. Snapshot Delta Tracking
+
+    def get_saved_view_with_delta(view_id: int) -> dict:
+        """
+        Load saved view + hitung delta KPI dari snapshot vs current.
+        """
+        view = db.get_saved_view(view_id)
+    
+        # Ambil KPI current untuk entity + period yang sama
+        current = get_current_kpis(
+            view['entity_level'], view['entity_id'],
+            view['date_from'], view['date_to'],
+            filters=view['filters']
+        )
+    
+        deltas = {}
+        for kpi in ['sla', 'mttr', 'volume', 'escalation', 'auto_resolve', 'repeat']:
+            snapshot_val = view[f'snapshot_{kpi}']
+            current_val = current.get(kpi)
+            if snapshot_val is not None and current_val is not None:
+                diff = current_val - snapshot_val
+                # Tentukan arah baik/buruk
+                positive_up = kpi in ('sla', 'auto_resolve')
+                quality = 'improving' if (diff > 0) == positive_up else 'worsening'
+                deltas[kpi] = {
+                    'snapshot': snapshot_val,
+                    'current': current_val,
+                    'delta': diff,
+                    'quality': quality if abs(diff) > 0.1 else 'stable',
+                }
+    
+        return {**view, 'deltas': deltas, 'current_kpis': current}
+
+### 1F. API Endpoints
+
+    GET    /api/saved-views              → list semua (sorted: pinned first, then last_accessed)
+    POST   /api/saved-views              → create new saved view
+    GET    /api/saved-views/{id}         → get single (includes delta calculation)
+    PUT    /api/saved-views/{id}         → update name/description/pin
+    DELETE /api/saved-views/{id}         → delete
+    POST   /api/saved-views/{id}/access  → record access (update timestamp + count)
+    PUT    /api/saved-views/{id}/pin     → toggle pin status
+    PUT    /api/saved-views/reorder      → update sort_order for pinned items
+
+* * *
+
+## 2. COMPARISON MODE
+
+### 2A. Konsep
+
+    User bisa membandingkan 2 profil APAPUN yang se-level.
+    
+    3 tipe comparison:
+      1. TEMPORAL:  Same entity, different period
+         "R03 Jan 2025 vs R03 Jun 2025"
+      2. ENTITY:    Different entity, same period
+         "TO JKT-1 vs TO BDG-1, Jul 2025"
+      3. FAULT:     Same entity+period, different fault
+         "R03 Link Failure vs R03 Power Failure, Jul 2025"
+    
+    Constraint: Kedua profil HARUS se-level (tidak bisa compare TO vs NOP).
+
+### 2B. Comparison Entry Points
+
+    User bisa masuk Comparison Mode dari 3 tempat:
+    
+    1. Profiler: tombol [⚖️ Bandingkan] di toolbar
+       → Buka panel "Pilih profil pembanding"
+       → Profil A = current view (sudah ter-load)
+       → User pilih profil B
+    
+    2. Saved Views: tombol [⚖️ Compare] pada saved view
+       → Saved view = profil A
+       → User pilih profil B (dari saved view lain atau manual)
+    
+    3. Menu Sidebar: "⚖️ Comparison" (dedicated page)
+       → User pilih profil A dan profil B dari scratch
+    
+    URL: /comparison?
+      levelA=regional&idA=R03&fromA=2025-01&toA=2025-01
+      &levelB=regional&idB=R03&fromB=2025-06&toB=2025-06
+
+### 2C. Comparison Selector
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ⚖️ Comparison Mode                                                  │
+    │                                                                       │
+    │  ┌─── Profil A ─────────────────┐  ┌─── Profil B ─────────────────┐│
+    │  │ Level:    [Regional ▾]       │  │ Level:    [Regional ▾]       ││
+    │  │ Entity:   [R03 Jabar ▾]     │  │ Entity:   [R03 Jabar ▾]     ││
+    │  │ Periode:  [Jan 2025 ▾]      │  │ Periode:  [Jun 2025 ▾]      ││
+    │  │ Gangguan: [Semua ▾]          │  │ Gangguan: [Semua ▾]          ││
+    │  └──────────────────────────────┘  └──────────────────────────────┘│
+    │                                                                       │
+    │  Tipe: 🔘 Temporal (same entity, diff period)                        │
+    │        ○ Entity (diff entity, same period)                            │
+    │        ○ Fault (same entity+period, diff fault)                       │
+    │                                                                       │
+    │  [🔍 Bandingkan]                                                     │
+    │  atau: [📌 Load dari Saved View A ▾] vs [📌 Load dari Saved View B ▾]│
+    └──────────────────────────────────────────────────────────────────────┘
+    
+    Saat tipe berubah, selector adapts:
+      Temporal → lock entity+fault di B = sama dengan A, unlock periode
+      Entity → lock period+fault di B = sama dengan A, unlock entity
+      Fault → lock entity+period di B = sama dengan A, unlock fault filter
+
+* * *
+
+## 3. COMPARISON LAYOUT — SIDE BY SIDE
+
+### 3A. Overview
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ⚖️ Comparison: R03 Jabar                                            │
+    │  Jan 2025 vs Jun 2025 (Temporal)                                     │
+    │                                                                       │
+    │  ═══ DELTA SUMMARY ═══                                               │
+    │  ┌─────────────────────────────────────────────────────────────────┐ │
+    │  │  SLA:     82.5% → 84.0%   ▲ +1.5pp  ✅ membaik                 │ │
+    │  │  MTTR:    1.250m → 1.120m  ▼ -10.4%  ✅ membaik                 │ │
+    │  │  Volume:  48.5K → 45.2K    ▼ -6.8%   ✅ membaik                 │ │
+    │  │  Esc:     6.2% → 5.1%     ▼ -1.1pp  ✅ membaik                 │ │
+    │  │  Auto:    48% → 52%       ▲ +4pp    ✅ membaik                 │ │
+    │  │  Repeat:  32% → 28%       ▼ -4pp    ✅ membaik                 │ │
+    │  │                                                                   │ │
+    │  │  Status:  🔴 Kritis → 🟡 Perlu Perhatian  ✅ membaik            │ │
+    │  │  Behavior: Chronic → Chronic (belum berubah)                     │ │
+    │  │                                                                   │ │
+    │  │  "R03 menunjukkan perbaikan signifikan dari Jan ke Jun 2025.     │ │
+    │  │   Semua KPI membaik. SLA naik 1.5pp, MTTR turun 10.4%.          │ │
+    │  │   Namun masih di bawah target (84% vs 90%). Status membaik       │ │
+    │  │   dari Kritis ke Perlu Perhatian."                               │ │
+    │  └─────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ═══ KPI SIDE-BY-SIDE ═══                                            │
+    │  ┌── Profil A (Jan 2025) ───────┐  ┌── Profil B (Jun 2025) ───────┐│
+    │  │ Volume   SLA    MTTR   Esc   │  │ Volume   SLA    MTTR   Esc   ││
+    │  │ 48.5K    82.5%  1250m  6.2%  │  │ 45.2K    84.0%  1120m  5.1%  ││
+    │  │ 🔴       🔴     🔴     🟡    │  │ 🟡       🟡     🟡     🟢    ││
+    │  └──────────────────────────────┘  └──────────────────────────────┘│
+    │                                                                       │
+    │  ═══ TREND OVERLAY ═══                                               │
+    │  ┌── SLA Trend (A=biru, B=hijau) ──────────────────────────────────┐│
+    │  │ 90 ┤──── target ────────────────────────────────────────────    ││
+    │  │ 86 ┤  ──A──                                    ──B──            ││
+    │  │ 82 ┤       ──A──                          ──B──                 ││
+    │  │ 78 ┤            ──A──                ──B──                      ││
+    │  │    └──W1───W2───W3───W4    W1───W2───W3───W4                    ││
+    │  │       Jan 2025              Jun 2025                             ││
+    │  └──────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ═══ RADAR OVERLAY ═══                                               │
+    │  ┌── KPI Radar (A=biru dashed, B=hijau solid) ────────────────────┐ │
+    │  │           SLA                                                    │ │
+    │  │          ╱  ╲                                                    │ │
+    │  │    Auto ╱ ╱╲ ╲ MTTR          🔵 A (Jan): composite 42          │ │
+    │  │        ╱╱    ╲╲              🟢 B (Jun): composite 58          │ │
+    │  │   Esc  ╲╲    ╱╱ Volume      Delta: +16 (membaik)               │ │
+    │  │         ╲╲╱╱                                                    │ │
+    │  │        Repeat                                                    │ │
+    │  └──────────────────────────────────────────────────────────────────┘ │
+    │                                                                       │
+    │  ═══ CHILD COMPARISON ═══                                            │
+    │  ┌─────────────────────────────────────────────────────────────────┐ │
+    │  │  NOP       │ SLA A │ SLA B │ Delta  │ Direction │ Status Change│ │
+    │  │  ──────────┼───────┼───────┼────────┼───────────┼─────────────│ │
+    │  │  Jakarta   │ 78.5% │ 82.5% │ +4.0pp │ ✅ better │ 🔴→🔴 same │ │
+    │  │  Bekasi    │ 80.2% │ 86.2% │ +6.0pp │ ✅ better │ 🔴→🟡 up   │ │
+    │  │  Bandung   │ 88.5% │ 90.1% │ +1.6pp │ ✅ better │ 🟡→🟢 up   │ │
+    │  │  Tangerang │ 89.0% │ 85.5% │ -3.5pp │ ❌ worse  │ 🟡→🔴 down │ │
+    │  │  Bogor     │ 90.5% │ 92.0% │ +1.5pp │ ✅ better │ 🟢→🟢 same │ │
+    │  │  Depok     │ 91.0% │ 93.2% │ +2.2pp │ ✅ better │ 🟢→🏆 up   │ │
+    │  └─────────────────────────────────────────────────────────────────┘ │
+    │  "5 dari 6 NOP membaik. Tangerang MEMBURUK (-3.5pp) — perlu         │
+    │   investigasi. Perbaikan terbesar: Bekasi (+6.0pp)."                │
+    │                                                                       │
+    │  ═══ HEATMAP COMPARISON ═══                                         │
+    │  ┌── A (Jan 2025) ──────────────┐  ┌── B (Jun 2025) ──────────────┐│
+    │  │ Hari×Jam heatmap              │  │ Hari×Jam heatmap              ││
+    │  │ (warna = volume)              │  │ (warna = volume)              ││
+    │  └──────────────────────────────┘  └──────────────────────────────┘│
+    │  "Pola peak bergeser: Jan peak Senin-Selasa dini hari,             │
+    │   Jun peak Rabu-Kamis siang. Pattern shift terdeteksi."            │
+    │                                                                       │
+    │  Footer: Dr. Adam M.                                                 │
+    └──────────────────────────────────────────────────────────────────────┘
+
+* * *
+
+## 4. DELTA ANALYSIS ENGINE
+
+### 4A. KPI Delta Calculation
+
+    def calculate_deltas(kpis_a: dict, kpis_b: dict) -> dict:
+        """
+        Hitung delta antara 2 set KPI.
+        Tentukan direction (better/worse/stable) per KPI.
+        """
+        positive_up = {'sla_pct', 'auto_resolve_pct'}   # naik = baik
+        negative_up = {'avg_mttr_min', 'total_tickets', 'escalation_pct', 'repeat_pct'}  # naik = buruk
+    
+        deltas = {}
+        for kpi in ['sla_pct', 'avg_mttr_min', 'total_tickets', 
+                    'escalation_pct', 'auto_resolve_pct', 'repeat_pct']:
+            val_a = kpis_a.get(kpi)
+            val_b = kpis_b.get(kpi)
+    
+            if val_a is None or val_b is None:
+                continue
+    
+            diff = val_b - val_a
+    
+            # Percentage change
+            pct_change = (diff / val_a * 100) if val_a != 0 else 0
+    
+            # Direction quality
+            if abs(diff) < 0.1:  # threshold for "stable"
+                quality = 'stable'
+            elif kpi in positive_up:
+                quality = 'improving' if diff > 0 else 'worsening'
+            else:
+                quality = 'improving' if diff < 0 else 'worsening'
+    
+            deltas[kpi] = {
+                'value_a': val_a,
+                'value_b': val_b,
+                'delta': round(diff, 2),
+                'pct_change': round(pct_change, 1),
+                'quality': quality,
+                'icon': '✅' if quality == 'improving' else ('❌' if quality == 'worsening' else '─'),
+            }
+    
+        return deltas
+
+### 4B. Delta Narrative Generation
+
+    def generate_comparison_narrative(entity, type_compare, deltas, 
+                                      status_a, status_b, children_delta) -> str:
+        """
+        Auto-generate narasi perbandingan.
+        """
+        parts = []
+    
+        # Count improving vs worsening
+        n_improving = sum(1 for d in deltas.values() if d['quality'] == 'improving')
+        n_worsening = sum(1 for d in deltas.values() if d['quality'] == 'worsening')
+        n_stable = sum(1 for d in deltas.values() if d['quality'] == 'stable')
+        total = len(deltas)
+    
+        # Overall direction
+        if n_improving > n_worsening + 1:
+            parts.append(
+                f"{entity['name']} menunjukkan perbaikan signifikan. "
+                f"{n_improving} dari {total} KPI membaik."
+            )
+        elif n_worsening > n_improving + 1:
+            parts.append(
+                f"{entity['name']} menunjukkan penurunan. "
+                f"{n_worsening} dari {total} KPI memburuk."
+            )
+        else:
+            parts.append(f"{entity['name']} relatif stabil dengan perubahan minor.")
+    
+        # Highlight biggest changes
+        biggest_improve = max(
+            [(k, v) for k, v in deltas.items() if v['quality'] == 'improving'],
+            key=lambda x: abs(x[1]['pct_change']), default=None
+        )
+        biggest_worsen = max(
+            [(k, v) for k, v in deltas.items() if v['quality'] == 'worsening'],
+            key=lambda x: abs(x[1]['pct_change']), default=None
+        )
+    
+        if biggest_improve:
+            k, v = biggest_improve
+            parts.append(f"Perbaikan terbesar: {KPI_LABELS[k]} ({v['delta']:+.1f}).")
+        if biggest_worsen:
+            k, v = biggest_worsen
+            parts.append(f"Penurunan: {KPI_LABELS[k]} ({v['delta']:+.1f}).")
+    
+        # Status change
+        if status_a != status_b:
+            parts.append(
+                f"Status berubah dari {status_a['status']} ke {status_b['status']}."
+            )
+    
+        # Children highlight
+        if children_delta:
+            n_child_worse = sum(1 for c in children_delta if c['quality'] == 'worsening')
+            if n_child_worse > 0:
+                worst_child = min(children_delta, key=lambda c: c['delta'])
+                parts.append(
+                    f"Perhatian: {worst_child['name']} memburuk ({worst_child['delta']:+.1f}pp)."
+                )
+    
+        return " ".join(parts)
+
+* * *
+
+## 5. COMPOSITION-AWARE COMPARISON
+
+### 5A. Konsep
+
+    Saat membandingkan 2 ENTITY BERBEDA (tipe Entity comparison),
+    komposisi site bisa sangat berbeda:
+    
+      TO Kutai:   412 site (60% Bronze-3T, 5% Gold)
+      TO Jakarta:  380 site (10% Bronze-3T, 45% Gold)
+    
+    Perbandingan SLA total MISLEADING tanpa normalisasi.
+    Platform WAJIB mendeteksi dan memperingatkan ini.
+
+### 5B. Composition Check
+
+    def check_composition_similarity(entity_a, entity_b) -> dict:
+        """
+        Cek apakah komposisi site class antara 2 entity mirip.
+        Jika sangat berbeda, flag sebagai WARNING.
+        """
+        comp_a = get_composition(entity_a)  # {diamond: 5%, platinum: 10%, ...}
+        comp_b = get_composition(entity_b)
+    
+        # Chi-square-like distance (simplified)
+        total_diff = 0
+        for cls in ['diamond', 'platinum', 'gold', 'silver', 'bronze']:
+            pct_a = comp_a.get(cls, 0)
+            pct_b = comp_b.get(cls, 0)
+            total_diff += abs(pct_a - pct_b)
+    
+        similar = total_diff < 20  # jika total diff < 20pp = mirip
+    
+        result = {
+            "similar": similar,
+            "total_diff_pp": round(total_diff, 1),
+            "composition_a": comp_a,
+            "composition_b": comp_b,
+        }
+    
+        if not similar:
+            result["warning"] = (
+                f"⚠️ Komposisi site berbeda signifikan (gap {total_diff:.0f}pp). "
+                f"Perbandingan SLA total bisa MISLEADING. "
+                f"Lihat perbandingan per klasifikasi di bawah untuk analisis fair."
+            )
+            # Tambahkan KPI per class
+            result["normalized_kpis"] = {
+                "a": get_kpis_per_class(entity_a),
+                "b": get_kpis_per_class(entity_b),
+            }
+    
+        return result
+
+### 5C. Normalized Comparison Display
+
+    Jika komposisi berbeda signifikan, tampilkan ADDITIONAL section:
+    
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ⚠️ Komposisi site berbeda signifikan (gap 45pp).                    │
+    │  Perbandingan SLA total bisa misleading.                             │
+    │                                                                       │
+    │  ┌── Komposisi ────────────┐  ┌── SLA per Klasifikasi ────────────┐│
+    │  │         A (Kutai) B(JKT)│  │ Class    │ A(Kutai) │ B(JKT) │ Gap│ │
+    │  │ Diamond   1%     3%     │  │ Diamond  │  91.2%   │ 92.5%  │+1.3│ │
+    │  │ Platinum  4%    12%     │  │ Platinum │  89.5%   │ 91.0%  │+1.5│ │
+    │  │ Gold      5%    45%     │  │ Gold     │  88.0%   │ 90.5%  │+2.5│ │
+    │  │ Silver   30%    30%     │  │ Silver   │  85.5%   │ 88.0%  │+2.5│ │
+    │  │ Bronze   60%    10%     │  │ Bronze   │  78.0%   │ 82.0%  │+4.0│ │
+    │  └──────────────────────────┘  └──────────────────────────────────┘│
+    │                                                                       │
+    │  "SLA total: Kutai 85% vs Jakarta 91% (gap 6pp).                    │
+    │   Tapi per kelas Gold: gap hanya 2.5pp.                              │
+    │   Perbedaan utama karena KOMPOSISI (Kutai 60% Bronze vs JKT 10%).   │
+    │   Jika dinormalisasi ke komposisi yang sama, gap menyusut ~2pp."     │
+    └──────────────────────────────────────────────────────────────────────┘
+
+* * *
+
+## 6. API ENDPOINTS
+
+### 6A. Comparison API
+
+    POST /api/comparison/generate
+      Input: {
+        profile_a: {
+          entity_level: "regional",
+          entity_id: "R03",
+          date_from: "2025-01",
+          date_to: "2025-01",
+          filters: {type_ticket: null, severities: null, fault_level: null}
+        },
+        profile_b: {
+          entity_level: "regional",
+          entity_id: "R03",
+          date_from: "2025-06",
+          date_to: "2025-06",
+          filters: {type_ticket: null, severities: null, fault_level: null}
+        }
+      }
+    
+      Output: {
+        comparison_type: "temporal",  // temporal | entity | fault
+    
+        // KPI delta
+        deltas: {
+          sla_pct: {value_a: 82.5, value_b: 84.0, delta: +1.5, quality: "improving"},
+          avg_mttr_min: {...},
+          ...
+        },
+    
+        // Status delta
+        status_a: {status: "KRITIS", icon: "🔴"},
+        status_b: {status: "PERLU PERHATIAN", icon: "🟡"},
+    
+        // Children delta (per child)
+        children_delta: [
+          {id: "NOP_JKT", name: "Jakarta", sla_a: 78.5, sla_b: 82.5, 
+           delta: +4.0, quality: "improving"},
+          ...
+        ],
+    
+        // Narrative
+        narrative: "R03 menunjukkan perbaikan signifikan...",
+    
+        // Composition check (entity comparison only)
+        composition_check: {similar: true} | {similar: false, warning: "...", normalized_kpis: {...}},
+    
+        // Trend overlay data (for chart)
+        trend_a: [{period, value}, ...],
+        trend_b: [{period, value}, ...],
+    
+        // Heatmap A and B
+        heatmap_a: {cells, y_labels, x_labels},
+        heatmap_b: {cells, y_labels, x_labels},
+    
+        // Radar overlay
+        radar: {
+          axes: ["SLA", "MTTR_inv", "Volume_inv", "Esc_inv", "Auto", "Repeat_inv"],
+          values_a: [82.5, 65, 70, 80, 48, 68],    // normalized 0-100
+          values_b: [84.0, 72, 75, 85, 52, 72],
+        },
+      }
+
+### 6B. Validation
+
+    def validate_comparison(profile_a, profile_b) -> dict:
+        """
+        Validasi bahwa perbandingan valid.
+        """
+        errors = []
+    
+        # Must be same level
+        if profile_a['entity_level'] != profile_b['entity_level']:
+            errors.append("Perbandingan harus pada level yang sama.")
+    
+        # Must have minimum tickets
+        min_tickets = get_threshold('compare_min_tickets', default=30)
+        tickets_a = count_tickets(profile_a)
+        tickets_b = count_tickets(profile_b)
+        if tickets_a < min_tickets:
+            errors.append(f"Profil A hanya memiliki {tickets_a} tiket (minimum {min_tickets}).")
+        if tickets_b < min_tickets:
+            errors.append(f"Profil B hanya memiliki {tickets_b} tiket (minimum {min_tickets}).")
+    
+        # Must be different (at least 1 dimension different)
+        if (profile_a['entity_id'] == profile_b['entity_id'] and
+            profile_a['date_from'] == profile_b['date_from'] and
+            profile_a['filters'] == profile_b['filters']):
+            errors.append("Kedua profil identik — tidak ada yang dibandingkan.")
+    
+        return {"valid": len(errors) == 0, "errors": errors}
+
+* * *
+
+## 7. REACT COMPONENT STRUCTURE
+
+    frontend/src/pages/
+      ├── SavedViewsPage.jsx             ← /saved-views
+      └── ComparisonPage.jsx             ← /comparison
+    
+    frontend/src/components/saved-views/
+      ├── SavedViewList.jsx              ← list pinned + recent
+      ├── SavedViewCard.jsx              ← single card with delta badge
+      ├── SaveDialog.jsx                 ← modal for saving new view
+      └── DeltaBadge.jsx                 ← ▲ +1.5pp colored badge
+    
+    frontend/src/components/comparison/
+      ├── ComparisonSelector.jsx         ← dual-panel selector (A vs B)
+      ├── ComparisonLayout.jsx           ← main comparison page container
+      ├── DeltaSummary.jsx               ← KPI delta table with icons
+      ├── DeltaNarrative.jsx             ← auto-generated comparison text
+      ├── SideBySideKpi.jsx              ← 2 KPI card rows side by side
+      ├── TrendOverlay.jsx               ← dual line chart (A=blue, B=green)
+      ├── RadarOverlay.jsx               ← Recharts RadarChart with 2 series
+      ├── ChildDeltaTable.jsx            ← children with A/B/delta columns
+      ├── HeatmapComparison.jsx          ← 2 heatmaps side by side
+      └── CompositionWarning.jsx         ← warning banner + normalized KPIs
+
+* * *
+
+## 8. MENU & ROUTING UPDATE
+
+    // Sidebar:
+    //   📊 Dashboard
+    //   🔍 Profiler
+    //   📋 Report Card
+    //   📌 Saved Views        ← NEW
+    //   ⚖️ Comparison          ← NEW
+    //   📤 Upload
+    //   ⚙️ Settings
+    
+    <Routes>
+      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/profiler" element={<ProfilerPage />} />
+      <Route path="/report-card" element={<ReportCardPage />} />
+      <Route path="/saved-views" element={<SavedViewsPage />} />      {/* NEW */}
+      <Route path="/comparison" element={<ComparisonPage />} />        {/* NEW */}
+      <Route path="/upload" element={<UploadPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/" element={<Navigate to="/dashboard" />} />
+    </Routes>
+
+* * *
+
+## 9. PROFILER INTEGRATION
+
+### 9A. Save Button di Profiler
+
+    Di toolbar Profiler (di bawah selector), tambahkan:
+    
+      [🔍 Generate] [💾 Simpan View] [⚖️ Bandingkan] [📋 Report Card]
+    
+    💾 Simpan View → buka SaveDialog modal
+    ⚖️ Bandingkan → navigate ke /comparison dengan current view sebagai profil A
+    📋 Report Card → navigate ke /report-card dengan current entity+period
+
+### 9B. Saved View Quick Access
+
+    Di sidebar, di bawah menu "📌 Saved Views", tampilkan
+    3 pinned saved views sebagai shortcut:
+    
+      📌 Saved Views
+         ├── R03 Jabar — LF Bulanan
+         ├── NOP Jakarta — Mingguan
+         └── Area Barat — Q2 2025
+         └── [Lihat semua →]
+    
+    Klik shortcut → langsung navigate ke Profiler dengan view tersebut.
+
+* * *
+
+## CATATAN PENTING
+
+1. **Saved View ≠ Bookmark**: Saved View menyimpan snapshot KPI.Saat dibuka kembali, user bisa lihat delta (berubah berapa sejak disimpan).
+  
+2. **Comparison harus se-level**: TO vs TO, NOP vs NOP.Tidak bisa cross-level (TO vs NOP). Validasi di frontend + backend.
+  
+3. **Composition check HANYA untuk Entity comparison**.Temporal dan Fault comparison tidak perlu (entity yang sama).
+  
+4. **Radar overlay**: Semua KPI dinormalisasi ke 0-100.KPI yang "lower is better" (MTTR, Volume, Esc, Repeat) di-invert:score = 100 - (actual / max_peer * 100).
+  
+5. **Max saved views**: Tidak ada hard limit, tapi UI tampilkanpinned first (max 5 pinned), lalu recent (lazy load).
+  
+6. **Comparison data source**: summary_monthly untuk KPI delta.noc_tickets hanya jika heatmap comparison diminta (lazy load).
+  
+
+* * *
+
+## VALIDASI SETELAH SELESAI
+
+* [ ] Menu "Saved Views" di sidebar
+* [ ] Saved Views page: pinned first, then recent
+* [ ] Save dialog dari Profiler: nama + deskripsi + snapshot
+* [ ] Delta badge pada saved view: ▲/▼ dari snapshot vs current
+* [ ] Pin/unpin saved views, reorder pinned
+* [ ] Klik "Buka →" → navigate ke Profiler dengan saved params
+* [ ] Access tracking: last_accessed_at + access_count
+* [ ] Sidebar shortcut: 3 pinned saved views
+* [ ] Menu "Comparison" di sidebar
+* [ ] Comparison selector: dual-panel A vs B
+* [ ] 3 tipe comparison: Temporal, Entity, Fault
+* [ ] Validation: same level, minimum tickets, not identical
+* [ ] Delta Summary: semua KPI dengan ▲/▼ + quality icon
+* [ ] Delta narrative auto-generated
+* [ ] Trend overlay: dual line chart (A=blue, B=green)
+* [ ] Radar overlay: 2 series pada 1 RadarChart
+* [ ] Child delta table: A/B/delta per child
+* [ ] Heatmap comparison: side by side
+* [ ] Composition check: warning jika komposisi berbeda >20pp
+* [ ] Normalized KPI per class (jika composition warning)
+* [ ] Profiler toolbar: [💾 Simpan] [⚖️ Bandingkan] [📋 Report Card]
+* [ ] API: /api/saved-views CRUD
+* [ ] API: /api/comparison/generate
+* [ ] saved_views table created
