@@ -28,6 +28,7 @@ backend/
     data_quality.py    - Data quality summary endpoint
     external.py        - External data: calendar, weather, PLN, annotations, correlation
     profiler.py        - Profiler engine: generate profile, children, peer ranking, filter options, trends, heatmap, child-trends
+    gangguan.py        - Gangguan cross-dimension: overview (severity/fault/RC), cross-dimension, distribution, top-sites
   services/
     backup_service.py  - Auto-backup logic (retain 3)
     upload_service.py  - Chunk assembly + validation
@@ -61,6 +62,7 @@ frontend/
         TrendChart.jsx     - Recharts ComposedChart with trend line, ±2σ band, anomaly dots, annotations
         HeatmapAdaptive.jsx - CSS grid heatmap (adaptive: week×day or day×hour)
         ChildTrendBar.jsx  - Diverging bar chart for child entity trend decomposition
+        GangguanPanel.jsx  - Panel 3: Gangguan analysis (Mode A: overview, Mode B: cross-dimension)
       ExternalDataPage.jsx - 5-tab external data (Cuaca, PLN, Kalender, Anotasi, Korelasi)
       SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
       master/

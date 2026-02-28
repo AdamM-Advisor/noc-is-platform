@@ -8,6 +8,7 @@ from backend.routers import schema, threshold
 from backend.routers import imports, orphans, data
 from backend.routers import hierarchy, site, sla_target, data_quality, external
 from backend.routers import profiler
+from backend.routers import gangguan
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ app.include_router(sla_target.router, prefix="/api")
 app.include_router(data_quality.router, prefix="/api")
 app.include_router(external.router, prefix="/api")
 app.include_router(profiler.router, prefix="/api")
+app.include_router(gangguan.router, prefix="/api")
 
 
 @app.on_event("startup")

@@ -1,0 +1,742 @@
+# ============================================================
+
+# PROMPT 8 — PROFILER GANGGUAN: CROSS-DIMENSION ANALYSIS
+
+# NOC-IS Analytics Platform v1.0
+
+# Author: Dr. Adam M.
+
+# ============================================================
+
+#
+
+# PRASYARAT:
+
+# Prompt 0-7 sudah dijalankan
+
+# Profiler page: selector, Panel 1 (KPI), Panel 2 (temporal)
+
+#
+
+# HASIL YANG DIHARAPKAN:
+
+# ✅ Panel 3: Profil Gangguan
+
+# ✅ Severity Breakdown (donut chart + narasi)
+
+# ✅ Fault Level Pareto (horizontal bar + cumulative line)
+
+# ✅ RC Category Analysis (treemap atau bar)
+
+# ✅ Cross-dimension: Gangguan × Hierarki Site (distribusi + over-representation)
+
+# ✅ Top Problem Sites per Fault Level
+
+# ✅ Repeat Pattern per Fault Level (interval analysis)
+
+# ✅ Gangguan-specific trend & heatmap (filtered)
+
+# ✅ Rekomendasi spesifik per gangguan
+
+# ============================================================
+
+Lanjutkan pembangunan **NOC-IS Analytics Platform**. Prompt 7 sudah membangun Panel 2 (Temporal). Sekarang bangun **Panel 3: Profil Gangguan** — analisis cross-dimension gangguan × hierarki site.
+
+* * *
+
+## 1. PANEL 3 POSITION
+
+    ┌─────────────────────────────────────────────────────┐
+    │  Selector (sticky)                                   │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 1: Identitas + KPI Cards    (Prompt 6)       │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 2: Temporal (Tren + Heatmap) (Prompt 7)      │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 3: GANGGUAN (Cross-Dimension) ← PROMPT INI   │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 4: Prediktif                  (Prompt 9)      │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 5: Child Entities Table       (Prompt 6)      │
+    └─────────────────────────────────────────────────────┘
+
+Panel 3 memiliki 2 MODE tampilan tergantung filter gangguan di selector:
+
+    MODE A: Gangguan = "Semua" (default)
+      → Tampilkan OVERVIEW: severity breakdown, fault Pareto, RC category
+      → Tujuan: "Gangguan apa yang paling dominan?"
+    
+    MODE B: Gangguan = spesifik (misal Fault = "Link Failure")
+      → Tampilkan CROSS-DIMENSION: distribusi gangguan tsb di hierarki site
+      → Tujuan: "Link Failure paling banyak di mana? Pola apa?"
+
+* * *
+
+## 2. MODE A: OVERVIEW GANGGUAN (filter = Semua)
+
+### 2A. Severity Breakdown
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  🔧 Profil Gangguan — Overview                                       │
+    │                                                                       │
+    │  ┌─── Severity Mix ─────────────────────────────────────────────────┐│
+    │  │                                                                   ││
+    │  │  ┌─────────────┐   Critical : 2.700  (6.0%)                      ││
+    │  │  │   ████████  │   Major    : 6.300  (14.0%)                     ││
+    │  │  │  █ Min ██  │   Minor    : 22.950 (51.0%)                     ││
+    │  │  │  █ 51% ██  │   Low      : 13.050 (29.0%)                     ││
+    │  │  │  ██████████  │                                                 ││
+    │  │  │   Crt 6%   │   Total: 45.000 tiket                            ││
+    │  │  │   Maj 14%  │                                                   ││
+    │  │  │   Low 29%  │                                                   ││
+    │  │  └─────────────┘                                                  ││
+    │  │  (donut chart)                                                    ││
+    │  │                                                                   ││
+    │  │  Narasi: "Komposisi: Minor dominan (51%), diikuti Low (29%).      ││
+    │  │  Critical+Major = 20% — dalam batas normal."                      ││
+    │  │                                                                   ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+**Interpretation Rules:**
+
+    def interpret_severity_mix(counts: dict) -> str:
+        total = sum(counts.values())
+        crit_pct = counts.get('Critical', 0) / total * 100
+        maj_pct = counts.get('Major', 0) / total * 100
+        high_pct = crit_pct + maj_pct
+    
+        parts = [
+            f"Komposisi: {get_dominant(counts)} dominan ({get_dominant_pct(counts):.0f}%)."
+        ]
+    
+        if crit_pct > 10:
+            parts.append(
+                f"⚠️ Proporsi Critical {crit_pct:.0f}% di atas 10%. "
+                f"Perlu investigasi apakah ada masalah sistemik."
+            )
+    
+        if high_pct > 30:
+            parts.append(
+                f"🔴 Lebih dari 30% tiket berseverity tinggi (Critical+Major = {high_pct:.0f}%). "
+                f"Kualitas jaringan perlu evaluasi menyeluruh."
+            )
+        elif high_pct <= 20:
+            parts.append(f"Critical+Major = {high_pct:.0f}% — dalam batas normal.")
+        else:
+            parts.append(f"Critical+Major = {high_pct:.0f}% — perlu dipantau.")
+    
+        return " ".join(parts)
+
+### 2B. Fault Level Pareto
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ┌─── Fault Level (Pareto) ─────────────────────────────────────────┐│
+    │  │                                                                   ││
+    │  │  Link Failure  ████████████████████ 15.750 (35%)  ──── 35%       ││
+    │  │  Power         ██████████████░░░░░░  9.900 (22%)  ──── 57%       ││
+    │  │  HW Fault      ██████████░░░░░░░░░░  8.100 (18%)  ──── 75%       ││
+    │  │  SW Fault      █████░░░░░░░░░░░░░░░  4.500 (10%)  ──── 85%       ││
+    │  │  Transmission  ███░░░░░░░░░░░░░░░░░  2.700  (6%)  ──── 91%       ││
+    │  │  Others        ██░░░░░░░░░░░░░░░░░░  4.050  (9%)  ──── 100%      ││
+    │  │                                                   cumulative%     ││
+    │  │                                                                   ││
+    │  │  Narasi: "Top 3 gangguan (Link Failure, Power, HW Fault)          ││
+    │  │  menyumbang 75% total tiket. Fokus perbaikan pada 3 jenis ini     ││
+    │  │  berpotensi mengurangi 75% beban operasional."                    ││
+    │  │                                                                   ││
+    │  │  Klik bar → filter profiler ke fault level tersebut (Mode B)      ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+**Interpretation Rules:**
+
+    def interpret_fault_pareto(fault_counts: dict) -> str:
+        total = sum(fault_counts.values())
+        sorted_faults = sorted(fault_counts.items(), key=lambda x: -x[1])
+    
+        # Pareto: berapa fault level untuk 80%?
+        cumulative = 0
+        n_for_80 = 0
+        top_names = []
+        for name, count in sorted_faults:
+            cumulative += count
+            n_for_80 += 1
+            top_names.append(name)
+            if cumulative / total >= 0.80:
+                break
+    
+        top_pct = cumulative / total * 100
+        parts = [
+            f"Top {n_for_80} gangguan ({', '.join(top_names)}) menyumbang "
+            f"{top_pct:.0f}% total tiket."
+        ]
+    
+        # Dominance check
+        top1_pct = sorted_faults[0][1] / total * 100
+        if top1_pct > 40:
+            parts.append(
+                f"⚠️ {sorted_faults[0][0]} sangat dominan ({top1_pct:.0f}%). "
+                f"Fokus prioritas pada gangguan ini."
+            )
+    
+        if n_for_80 <= 3:
+            parts.append(
+                f"Fokus perbaikan pada {n_for_80} jenis ini berpotensi "
+                f"mengurangi {top_pct:.0f}% beban operasional."
+            )
+    
+        return " ".join(parts)
+
+### 2C. RC Category Analysis
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ┌─── Root Cause Category ──────────────────────────────────────────┐│
+    │  │                                                                   ││
+    │  │  ┌─────────────────────────────────────────────────────┐          ││
+    │  │  │ Power      ████████████████ 12.600 (28%)            │          ││
+    │  │  │ Transmisi  ██████████████░░ 10.800 (24%)            │          ││
+    │  │  │ Radio      ████████████░░░░  9.000 (20%)            │          ││
+    │  │  │ Aktivitas  ██████░░░░░░░░░░  5.400 (12%)            │          ││
+    │  │  │ Lingkungan █████░░░░░░░░░░░  4.050  (9%)            │          ││
+    │  │  │ Lainnya    ███░░░░░░░░░░░░░  3.150  (7%)            │          ││
+    │  │  └─────────────────────────────────────────────────────┘          ││
+    │  │                                                                   ││
+    │  │  ┌─── RC Category × Severity ─────────────────────────┐          ││
+    │  │  │           │ Crit │ Major│ Minor│ Low  │ Total      │          ││
+    │  │  │ Power     │  800 │ 2100 │ 5400 │ 4300 │ 12600      │          ││
+    │  │  │ Transmisi │  600 │ 1800 │ 5200 │ 3200 │ 10800      │          ││
+    │  │  │ Radio     │  900 │ 1500 │ 4200 │ 2400 │  9000      │          ││
+    │  │  │ Aktivitas │  200 │  600 │ 3000 │ 1600 │  5400      │          ││
+    │  │  │ ...       │      │      │      │      │            │          ││
+    │  │  └───────────┴──────┴──────┴──────┴──────┴────────────┘          ││
+    │  │                                                                   ││
+    │  │  Narasi: "RC Power paling banyak (28%), diikuti Transmisi (24%). ││
+    │  │  RC Radio punya proporsi Critical tertinggi (10% vs avg 6%) —     ││
+    │  │  gangguan radio cenderung lebih parah."                           ││
+    │  │                                                                   ││
+    │  │  Klik RC → filter profiler ke rc_category tersebut                ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+**Interpretation Rules:**
+
+    def interpret_rc_severity_cross(rc_sev_matrix: dict) -> str:
+        """Detect RC categories with disproportionate Critical rate."""
+        overall_crit_pct = total_critical / total_all * 100
+    
+        alerts = []
+        for rc, counts in rc_sev_matrix.items():
+            rc_total = sum(counts.values())
+            rc_crit_pct = counts.get('Critical', 0) / rc_total * 100
+            if rc_crit_pct > overall_crit_pct * 1.5:  # 50% lebih tinggi dari rata-rata
+                alerts.append(
+                    f"RC {rc} punya proporsi Critical tinggi "
+                    f"({rc_crit_pct:.0f}% vs rata-rata {overall_crit_pct:.0f}%)"
+                )
+    
+        if alerts:
+            return ". ".join(alerts) + " — gangguan jenis ini cenderung lebih parah."
+        return "Distribusi severity antar RC category relatif merata."
+
+* * *
+
+## 3. MODE B: CROSS-DIMENSION (filter gangguan spesifik)
+
+Saat user memilih gangguan spesifik di selector (misal Fault="Link Failure"), Panel 3 berubah ke mode cross-dimension:
+
+### 3A. Gangguan Overview Card
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  🔧 Profil Gangguan: Link Failure                                     │
+    │  Entitas: Regional R03 | Jan-Jul 2025                                │
+    │                                                                       │
+    │  ┌─── Overview ──────────────────────────────────────────────────────┐│
+    │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    ││
+    │  │  │ 15.750     │ │ 35%        │ │ 84.5%      │ │ 1.120 min  │    ││
+    │  │  │ Tiket LF   │ │ dr total   │ │ SLA (LF)   │ │ MTTR (LF)  │    ││
+    │  │  │            │ │            │ │ vs 89.2%   │ │ vs 890m    │    ││
+    │  │  │            │ │            │ │ overall    │ │ overall    │    ││
+    │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘    ││
+    │  │                                                                   ││
+    │  │  Narasi: "Link Failure adalah gangguan DOMINAN di R03 (35%        ││
+    │  │  total). SLA khusus LF 4.7pp lebih buruk dan MTTR 26% lebih      ││
+    │  │  lama dari rata-rata keseluruhan. Ini adalah penyumbang utama     ││
+    │  │  penurunan SLA R03."                                              ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+**Interpretation:**
+
+    def interpret_specific_fault(fault_name, fault_kpis, overall_kpis):
+        parts = []
+    
+        volume_pct = fault_kpis.volume / overall_kpis.volume * 100
+        sla_delta = fault_kpis.sla_pct - overall_kpis.sla_pct
+        mttr_ratio = fault_kpis.avg_mttr / overall_kpis.avg_mttr
+    
+        # Dominance
+        if volume_pct > 30:
+            parts.append(f"{fault_name} adalah gangguan DOMINAN ({volume_pct:.0f}% total).")
+        elif volume_pct > 15:
+            parts.append(f"{fault_name} menyumbang {volume_pct:.0f}% total tiket.")
+    
+        # SLA comparison
+        if sla_delta < -3:
+            parts.append(
+                f"SLA khusus {fault_name} {abs(sla_delta):.1f}pp lebih buruk dari keseluruhan "
+                f"({fault_kpis.sla_pct:.1f}% vs {overall_kpis.sla_pct:.1f}%)."
+            )
+    
+        # MTTR comparison
+        if mttr_ratio > 1.2:
+            pct_slower = (mttr_ratio - 1) * 100
+            parts.append(f"MTTR {pct_slower:.0f}% lebih lama dari rata-rata.")
+    
+        # Impact assessment
+        if volume_pct > 25 and sla_delta < -2:
+            parts.append(
+                f"Ini adalah penyumbang utama penurunan SLA {entity_name}."
+            )
+    
+        return " ".join(parts)
+
+### 3B. Distribusi di Hierarki Site
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ┌─── Link Failure per Child ({child_type_label}) ──────────────────┐│
+    │  │                                                                   ││
+    │  │  NOP Jakarta   ████████████████ 6.458 (41%)  [expected: 35%] ⚠️  ││
+    │  │  NOP Bandung   ████████░░░░░░░░ 4.253 (27%)  [expected: 25%]     ││
+    │  │  NOP Bekasi    █████░░░░░░░░░░░ 2.835 (18%)  [expected: 20%]     ││
+    │  │  NOP Bogor     ███░░░░░░░░░░░░░ 2.205 (14%)  [expected: 20%]     ││
+    │  │                                                                   ││
+    │  │  [expected] = proporsi tiket keseluruhan entity tsb               ││
+    │  │  ⚠️ = over-represented (aktual > expected + 5pp)                  ││
+    │  │                                                                   ││
+    │  │  Narasi: "Link Failure terkonsentrasi di NOP Jakarta (41%).       ││
+    │  │  NOP Jakarta menangani 35% total tiket R03 tapi 41% Link Failure. ││
+    │  │  Over-representation 6pp — indikasi masalah spesifik di wilayah   ││
+    │  │  ini."                                                            ││
+    │  │                                                                   ││
+    │  │  Klik bar → drill-down ke level lebih rendah                      ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+**Over-Representation Analysis:**
+
+    def analyze_over_representation(fault_name, child_distribution, overall_distribution):
+        """
+        Deteksi child entity yang punya proporsi gangguan lebih tinggi 
+        dari proporsi totalnya.
+    
+        Contoh:
+        NOP Jakarta = 35% total tiket R03 (overall)
+        NOP Jakarta = 41% Link Failure R03 (specific fault)
+        Over-representation = 41% - 35% = 6pp → flagged
+        """
+        results = []
+        for child_id in child_distribution:
+            actual_pct = child_distribution[child_id] / sum(child_distribution.values()) * 100
+            expected_pct = overall_distribution[child_id] / sum(overall_distribution.values()) * 100
+            diff = actual_pct - expected_pct
+    
+            results.append({
+                "entity_id": child_id,
+                "actual_pct": actual_pct,
+                "expected_pct": expected_pct,
+                "diff_pp": diff,
+                "is_over": diff > 5,      # flagged jika > 5pp over
+                "is_under": diff < -5,
+            })
+    
+        over = [r for r in results if r['is_over']]
+        if over:
+            worst = max(over, key=lambda r: r['diff_pp'])
+            narrative = (
+                f"{fault_name} terkonsentrasi di {worst['entity_name']} "
+                f"({worst['actual_pct']:.0f}%). {worst['entity_name']} menangani "
+                f"{worst['expected_pct']:.0f}% total tiket tapi {worst['actual_pct']:.0f}% "
+                f"{fault_name}. Over-representation {worst['diff_pp']:.0f}pp."
+            )
+        else:
+            narrative = f"Distribusi {fault_name} proporsional — tidak ada konsentrasi signifikan."
+    
+        return {"children": results, "narrative": narrative}
+
+### 3C. Drill-down per Hierarki Level
+
+    Klik NOP Jakarta pada distribusi bar →
+      Tampilkan distribusi Link Failure per TO di NOP Jakarta:
+    
+      ┌─── Link Failure per TO (NOP Jakarta) ─────────────────────────────┐
+      │  TO JKT-1  ████████████ 2.844 (44%)  [expected: 38%] ⚠️          │
+      │  TO JKT-2  ██████░░░░░░ 1.553 (24%)  [expected: 22%]             │
+      │  TO JKT-3  ████░░░░░░░░ 1.098 (17%)  [expected: 18%]             │
+      │  Others    ███░░░░░░░░░   963 (15%)  [expected: 22%]             │
+      └────────────────────────────────────────────────────────────────────┘
+    
+    Klik TO JKT-1 →
+      Tampilkan Top Sites Link Failure:
+    
+      ┌─── Top Sites Link Failure (TO JKT-1) ────────────────────────────┐
+      │  # │ Site   │ LF Tiket │ MTTR(m) │ Interval    │ Pattern        │
+      │  1 │ JKT001 │    120   │  1.800  │ avg 4.2 hari│ 🔴 Regular     │
+      │  2 │ JKT022 │     85   │  1.200  │ avg 7.8 hari│ 🟡 Semi-regular│
+      │  3 │ JKT015 │     72   │    950  │ avg 12.1 hr │ 🟡 Irregular   │
+      │  4 │ JKT008 │     55   │    780  │ avg 18.0 hr │ ─  Rare        │
+      │  5 │ JKT034 │     42   │    650  │ avg 22.5 hr │ ─  Rare        │
+      │                                                                    │
+      │  Top 5 site = 374 tiket (13.2% LF di TO JKT-1)                    │
+      │                                                                    │
+      │  Narasi: "Site JKT001 menyumbang 120 tiket LF (4.2% dari TO)     │
+      │  dengan pola berulang setiap ~4 hari. Root cause belum resolved." │
+      └────────────────────────────────────────────────────────────────────┘
+
+### 3D. Repeat Pattern per Fault Level
+
+    def analyze_fault_repeat_pattern(entity_id, entity_level, fault_name, date_from, date_to):
+        """
+        Deteksi pola berulang gangguan tertentu per site.
+        """
+        # Query noc_tickets: semua tiket fault_name untuk entity + period
+        # Per site, hitung interval antar tiket (hari)
+    
+        sql = """
+        WITH ticket_intervals AS (
+          SELECT site_id, occured_time,
+            LEAD(occured_time) OVER (
+              PARTITION BY site_id ORDER BY occured_time
+            ) as next_time,
+            EXTRACT(EPOCH FROM (
+              LEAD(occured_time) OVER (PARTITION BY site_id ORDER BY occured_time)
+              - occured_time
+            )) / 86400.0 as gap_days
+          FROM noc_tickets
+          WHERE calc_{level}_id = '{entity_id}'
+            AND fault_level = '{fault_name}'
+            AND calc_year_month BETWEEN '{from}' AND '{to}'
+        )
+        SELECT site_id,
+          COUNT(*) as ticket_count,
+          AVG(gap_days) as avg_gap_days,
+          STDDEV(gap_days) as std_gap_days,
+          MIN(gap_days) as min_gap_days,
+          MAX(gap_days) as max_gap_days
+        FROM ticket_intervals
+        WHERE gap_days IS NOT NULL
+        GROUP BY site_id
+        HAVING COUNT(*) >= 3
+        ORDER BY ticket_count DESC
+        LIMIT 20
+        """
+    
+        # Classify pattern:
+        # cv = std / avg
+        # cv < 0.3  → "Regular" (🔴 pola jelas, RC belum solved)
+        # cv < 0.6  → "Semi-regular" (🟡 pola cukup jelas)
+        # cv >= 0.6 → "Irregular" (─ tidak ada pola konsisten)
+    
+        return [{
+            "site_id": row.site_id,
+            "ticket_count": row.ticket_count,
+            "avg_gap_days": row.avg_gap_days,
+            "cv": row.std_gap_days / row.avg_gap_days if row.avg_gap_days > 0 else 999,
+            "pattern": classify_pattern(cv),
+            "next_predicted": estimate_next(last_ticket_date, avg_gap_days)
+        } for row in results]
+
+* * *
+
+## 4. RC CATEGORY × SEVERITY HEATMAP
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ┌─── RC Category × Severity (heatmap) ─────────────────────────────┐│
+    │  │                                                                   ││
+    │  │           │ Critical│ Major  │ Minor  │ Low    │                  ││
+    │  │  Power    │ [▓ 800] │ [▒2100]│ [░5400]│ [░4300]│                  ││
+    │  │  Transmisi│ [▒ 600] │ [▒1800]│ [░5200]│ [░3200]│                  ││
+    │  │  Radio    │ [▓ 900] │ [▒1500]│ [░4200]│ [░2400]│  ← Radio Crit   ││
+    │  │  Aktivitas│ [░ 200] │ [░ 600]│ [░3000]│ [░1600]│    paling tinggi ││
+    │  │  Lingkung │ [░ 100] │ [░ 300]│ [░2200]│ [░1450]│                  ││
+    │  │  Lainnya  │ [░ 100] │ [░   0]│ [░1950]│ [░1100]│                  ││
+    │  │                                                                   ││
+    │  │  ▓ = tinggi (relatif terhadap rata-rata)                          ││
+    │  │  ▒ = sedang                                                       ││
+    │  │  ░ = rendah                                                       ││
+    │  │                                                                   ││
+    │  │  Narasi: "RC Radio punya tingkat Critical tertinggi (10.0%        ││
+    │  │  vs rata-rata 6.0%). RC Power punya volume absolut terbesar."     ││
+    │  │                                                                   ││
+    │  │  Klik sel → filter profiler ke RC + Severity tersebut             ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+* * *
+
+## 5. GANGGUAN-SPECIFIC TREND & HEATMAP
+
+Saat mode B (gangguan spesifik), Panel 2 (Temporal) juga otomatis ter-filter. Tapi di Panel 3 kita tambahkan mini-chart khusus:
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ┌─── Tren Link Failure (khusus) ───────────────────────────────────┐│
+    │  │                                                                   ││
+    │  │  Volume LF per bulan:                                             ││
+    │  │  2500 ┤──●──●                                                     ││
+    │  │  2000 ┤        ──●──●──●──●──●                                    ││
+    │  │  1500 ┤                                                           ││
+    │  │       └──Jan───Feb───Mar───Apr───Mei───Jun───Jul──                ││
+    │  │  Tren: ─ STABIL                                                   ││
+    │  │                                                                   ││
+    │  │  Heatmap LF (Hari × Jam):                                        ││
+    │  │  ┌──────────────────────────────────────────┐                     ││
+    │  │  │      00  03  06  09  12  15  18  21      │                     ││
+    │  │  │ Sen  ▓▓  ▓▓  ░░  ░░  ░░  ░░  ░░  ░░    │                     ││
+    │  │  │ Sel  ▓▓  ▓▓  ░░  ░░  ░░  ░░  ░░  ░░    │                     ││
+    │  │  │ Rab  ░░  ░░  ░░  ░░  ░░  ░░  ░░  ░░    │                     ││
+    │  │  │ ...                                      │                     ││
+    │  │  └──────────────────────────────────────────┘                     ││
+    │  │                                                                   ││
+    │  │  Narasi: "Link Failure dominan Senin-Selasa dini hari (00-06).    ││
+    │  │  Pola konsisten selama 7 bulan. Kemungkinan terkait maintenance   ││
+    │  │  upstream atau beban traffic malam."                              ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+* * *
+
+## 6. GANGGUAN-SPECIFIC RECOMMENDATIONS
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  ┌─── Rekomendasi: Link Failure ────────────────────────────────────┐│
+    │  │                                                                   ││
+    │  │  🔴 1. RCA mendalam untuk site JKT001 (120 LF, pola 4-hari)      ││
+    │  │  🔴 2. PM perangkat MW di TO JKT-1 (44% konsentrasi LF di NOP)   ││
+    │  │  🟡 3. Tambah monitoring Sen-Sel 00-06 (peak LF hours)            ││
+    │  │  🟡 4. Review link redundancy NOP Jakarta (over-represent 6pp)    ││
+    │  │  🟡 5. Analisis RC detail LF: MW degradation vs FO cut vs lain   ││
+    │  │                                                                   ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+
+    def generate_fault_recommendations(fault_name, analysis) -> list:
+        recs = []
+    
+        # High-repeat sites
+        for site in analysis.repeat_patterns[:3]:
+            if site.pattern in ("Regular", "Semi-regular"):
+                recs.append({
+                    "priority": "critical",
+                    "icon": "🔴",
+                    "text": f"RCA mendalam untuk site {site.site_id} "
+                            f"({site.ticket_count} {fault_name}, pola {site.avg_gap_days:.0f}-hari)"
+                })
+    
+        # Over-represented child
+        for child in analysis.distribution:
+            if child.is_over and child.diff_pp > 5:
+                recs.append({
+                    "priority": "warning",
+                    "icon": "🟡",
+                    "text": f"Review {fault_name} di {child.entity_name} "
+                            f"(over-representation {child.diff_pp:.0f}pp)"
+                })
+    
+        # Temporal peak
+        if analysis.heatmap.peak_factor > 2.0:
+            peak = analysis.heatmap
+            recs.append({
+                "priority": "warning",
+                "icon": "🟡",
+                "text": f"Tambah monitoring {peak.peak_y_label} {peak.peak_x_label} "
+                        f"(peak {fault_name}, {peak.peak_factor:.1f}× rata-rata)"
+            })
+    
+        # SLA impact
+        if analysis.sla_delta < -3:
+            recs.append({
+                "priority": "critical",
+                "icon": "🔴",
+                "text": f"{fault_name} menurunkan SLA {abs(analysis.sla_delta):.1f}pp. "
+                        f"Perbaikan {fault_name} = perbaikan SLA terbesar."
+            })
+    
+        recs.sort(key=lambda r: {"critical": 0, "warning": 1}.get(r['priority'], 9))
+        return recs[:5]
+
+* * *
+
+## 7. API ENDPOINTS
+
+### 7A. Gangguan Overview (Mode A)
+
+    GET /api/profiler/gangguan/overview
+      ← Query: ?entity_level=regional &entity_id=R03
+                &date_from=2025-01-01 &date_to=2025-07-31
+                &type_ticket= &severities=
+      → Return: {
+          severity_mix: {
+            counts: {Critical: 2700, Major: 6300, Minor: 22950, Low: 13050},
+            total: 45000,
+            narrative: "..."
+          },
+          fault_pareto: {
+            items: [
+              {name: "Link Failure", count: 15750, pct: 35.0, cumulative_pct: 35.0},
+              {name: "Power", count: 9900, pct: 22.0, cumulative_pct: 57.0},
+              ...
+            ],
+            narrative: "..."
+          },
+          rc_category: {
+            items: [
+              {name: "Power", count: 12600, pct: 28.0},
+              ...
+            ],
+            rc_severity_matrix: {
+              "Power": {Critical: 800, Major: 2100, Minor: 5400, Low: 4300},
+              ...
+            },
+            narrative: "..."
+          }
+        }
+
+### 7B. Cross-Dimension (Mode B)
+
+    GET /api/profiler/gangguan/cross-dimension
+      ← Query: ?entity_level=regional &entity_id=R03
+                &fault_level=Link Failure    // atau rc_category atau severity
+                &date_from= &date_to=
+      → Return: {
+          overview: {
+            fault_name: "Link Failure",
+            volume: 15750,
+            pct_of_total: 35.0,
+            sla_pct: 84.5,
+            sla_overall: 89.2,
+            sla_delta: -4.7,
+            avg_mttr_min: 1120,
+            mttr_overall: 890,
+            narrative: "..."
+          },
+          distribution: {
+            children: [
+              {entity_id: "NOP_JKT", entity_name: "NOP Jakarta",
+               count: 6458, actual_pct: 41.0, expected_pct: 35.0,
+               diff_pp: 6.0, is_over: true},
+              ...
+            ],
+            narrative: "..."
+          },
+          repeat_patterns: [
+            {site_id: "JKT001", ticket_count: 120, avg_gap_days: 4.2,
+             cv: 0.22, pattern: "Regular", next_predicted: "2025-08-05"},
+            ...
+          ],
+          recommendations: [{priority, icon, text}, ...]
+        }
+
+### 7C. Drill-down Child Distribution
+
+    GET /api/profiler/gangguan/distribution
+      ← Query: ?entity_level=nop &entity_id=NOP_JAKARTA
+                &fault_level=Link Failure
+                &date_from= &date_to=
+      → Return: distribusi per TO (child of NOP)
+    
+    GET /api/profiler/gangguan/top-sites
+      ← Query: ?entity_level=to &entity_id=TO_JKT_1
+                &fault_level=Link Failure
+                &date_from= &date_to= &limit=20
+      → Return: top sites dengan repeat pattern analysis
+
+### 7D. Fault-Specific Heatmap
+
+    GET /api/profiler/gangguan/heatmap
+      ← Query: ?entity_level=regional &entity_id=R03
+                &fault_level=Link Failure
+                &date_from= &date_to=
+      → Return: sama seperti /api/profiler/heatmap tapi filtered per fault
+
+* * *
+
+## 8. DATA SOURCE STRATEGY
+
+    Mode A (Overview):
+      Severity mix  → summary_monthly (count_critical, count_major, count_minor, count_low)
+      Fault Pareto  → noc_tickets GROUP BY fault_level (not in summary)
+                      ATAU summary_monthly jika fault_level ada di summary
+      RC Category   → noc_tickets GROUP BY rc_category
+    
+    Mode B (Cross-dimension):
+      Distribution per child → noc_tickets GROUP BY {child_level}_id WHERE fault=X
+      Over-representation    → compare fault distribution vs overall distribution
+      Repeat patterns        → noc_tickets per site (window function, heavy)
+      Heatmap filtered       → noc_tickets WHERE fault=X GROUP BY day, hour
+    
+    CATATAN: Mode B query noc_tickets (1.3M rows).
+      DuckDB handles ini cepat, tapi tetap tampilkan loading indicator.
+      Hasil bisa di-cache per sesi (filter yang sama = hasil sama).
+
+* * *
+
+## 9. REACT COMPONENT STRUCTURE
+
+    frontend/src/components/profiler/gangguan/
+      ├── GangguanPanel.jsx           ← container, switch Mode A/B
+      ├── SeverityDonut.jsx           ← donut chart Recharts
+      ├── FaultPareto.jsx             ← horizontal bar + cumulative line
+      ├── RcCategoryBar.jsx           ← horizontal bar
+      ├── RcSeverityHeatmap.jsx       ← RC × Severity grid
+      ├── FaultOverviewCard.jsx       ← Mode B: 4 KPI comparison cards
+      ├── FaultDistribution.jsx       ← horizontal bar + over-representation flags
+      ├── TopSitesTable.jsx           ← table with repeat pattern
+      ├── FaultMiniTrend.jsx          ← mini line chart (fault-specific)
+      ├── FaultMiniHeatmap.jsx        ← mini heatmap (fault-specific)
+      └── FaultRecommendations.jsx    ← recommendation list
+    
+    Mode switch logic:
+      const gangguanFilter = profilerStore.filters.fault_level || 
+                              profilerStore.filters.rc_category ||
+                              (profilerStore.filters.severities?.length === 1 
+                               ? profilerStore.filters.severities[0] : null);
+    
+      if (gangguanFilter) {
+        return <GangguanCrossDimension filter={gangguanFilter} />;
+      } else {
+        return <GangguanOverview />;
+      }
+
+* * *
+
+## CATATAN PENTING
+
+1. **Dual mode**: Panel 3 berubah berdasarkan filter gangguan di selector.Tanpa filter → overview. Dengan filter → cross-dimension.
+  
+2. **Over-representation**: insight kunci di Mode B.Membandingkan proporsi gangguan vs proporsi total per child entity.Threshold flag: >5pp over-representation.
+  
+3. **Repeat pattern**: query berat (window function per site).Hanya dijalankan di Mode B, limit top 20 sites.Gunakan loading indicator.
+  
+4. **Klik bar → filter**: Klik fault level di Pareto → update selector filter→ Panel 3 otomatis switch ke Mode B untuk fault level tersebut.
+  
+5. **Fault Pareto data**: fault_level dan rc_category TIDAK ada di summary_monthly(summary hanya severity breakdown). Harus query noc_tickets.Pertimbangkan menambahkan summary_fault table jika terlalu lambat.
+  
+6. **Light mode**: warna heatmap RC×Severity = putih → kuning → merah.
+  
+
+* * *
+
+## VALIDASI SETELAH SELESAI
+
+* [ ] Panel 3 muncul di bawah Panel 2 pada Profiler
+* [ ] Mode A (filter Semua):
+  * [ ] Severity donut chart + narasi
+  * [ ] Fault Level Pareto (bar + cumulative line + narasi)
+  * [ ] RC Category bar chart + narasi
+  * [ ] RC × Severity heatmap + narasi (disproportionate detection)
+* [ ] Klik bar Pareto → filter update → switch ke Mode B
+* [ ] Mode B (filter spesifik):
+  * [ ] Overview card: LF volume, % total, SLA vs overall, MTTR vs overall
+  * [ ] Distribusi per child: bar + expected% + over-representation flag ⚠️
+  * [ ] Drill-down: klik child → distribusi level lebih dalam
+  * [ ] Top sites table: volume, MTTR, interval, pattern classification
+  * [ ] Mini trend chart (fault-specific)
+  * [ ] Mini heatmap (fault-specific, Hari×Jam)
+  * [ ] Recommendations spesifik (max 5)
+* [ ] Over-representation narasi otomatis
+* [ ] Repeat pattern: Regular/Semi-regular/Irregular classification
+* [ ] API /api/profiler/gangguan/overview return severity+fault+rc
+* [ ] API /api/profiler/gangguan/cross-dimension return distribution+repeat
+* [ ] API /api/profiler/gangguan/top-sites return top 20 with patterns

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, ArrowUpDown } from 'lucide-react';
 import useProfilerStore from '../stores/profilerStore';
 import TemporalPanel from '../components/profiler/TemporalPanel';
+import GangguanPanel from '../components/profiler/GangguanPanel';
 
 const LEVEL_OPTIONS = [
   { value: 'area', label: 'Area' },
@@ -122,6 +123,10 @@ export default function ProfilerPage() {
     childTrendData, childTrendLoading,
     annotations,
     setTrendKpis, fetchMultiTrends, fetchChildTrends,
+    gangguanOverview, gangguanCrossDim, gangguanLoading,
+    gangguanTopSites, gangguanFaultHeatmap,
+    fetchGangguanCrossDim, fetchGangguanOverview,
+    fetchGangguanDistribution, fetchGangguanTopSites, fetchGangguanFaultHeatmap,
   } = useProfilerStore();
 
   useEffect(() => {
@@ -227,6 +232,45 @@ export default function ProfilerPage() {
             }}
             onChildTrendKpiChange={(kpi) => {
               fetchChildTrends(kpi);
+            }}
+          />
+
+          <GangguanPanel
+            overviewData={gangguanOverview}
+            crossDimData={gangguanCrossDim}
+            topSitesData={gangguanTopSites}
+            faultHeatmapData={gangguanFaultHeatmap}
+            loading={gangguanLoading}
+            faultLevel={filters.faultLevel}
+            rcCategory={filters.rcCategory}
+            entityLevel={filters.entityLevel}
+            onFaultClick={(faultName) => {
+              if (!faultName) {
+                setFilters({ faultLevel: '', rcCategory: '' });
+                fetchGangguanOverview();
+              } else {
+                setFilters({ faultLevel: faultName, rcCategory: '' });
+                fetchGangguanCrossDim(faultName, '');
+              }
+            }}
+            onRcClick={(rcName) => {
+              if (!rcName) {
+                setFilters({ faultLevel: '', rcCategory: '' });
+                fetchGangguanOverview();
+              } else {
+                setFilters({ rcCategory: rcName, faultLevel: '' });
+                fetchGangguanCrossDim('', rcName);
+              }
+            }}
+            onDistributionDrillDown={(childId) => {
+              const childLevel = filters.entityLevel === 'area' ? 'regional' :
+                filters.entityLevel === 'regional' ? 'nop' :
+                filters.entityLevel === 'nop' ? 'to' :
+                filters.entityLevel === 'to' ? 'site' : null;
+              if (childLevel) {
+                drillDown(childLevel, childId);
+                updateUrl();
+              }
             }}
           />
 

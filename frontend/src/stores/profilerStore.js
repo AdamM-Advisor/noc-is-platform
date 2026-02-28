@@ -44,6 +44,13 @@ const useProfilerStore = create((set, get) => ({
 
   annotations: [],
 
+  gangguanOverview: null,
+  gangguanCrossDim: null,
+  gangguanLoading: false,
+  gangguanDistribution: null,
+  gangguanTopSites: null,
+  gangguanFaultHeatmap: null,
+
   setFilters: (updates) => {
     set((s) => ({ filters: { ...s.filters, ...updates } }));
   },
@@ -71,6 +78,11 @@ const useProfilerStore = create((set, get) => ({
       heatmapData: null,
       childTrendData: null,
       annotations: [],
+      gangguanOverview: null,
+      gangguanCrossDim: null,
+      gangguanDistribution: null,
+      gangguanTopSites: null,
+      gangguanFaultHeatmap: null,
     });
   },
 
@@ -107,6 +119,7 @@ const useProfilerStore = create((set, get) => ({
       get().fetchChildren();
       get().fetchPeerRanking();
       get().fetchTemporalData();
+      get().fetchGangguanData();
     } catch (err) {
       set({ profileLoading: false, profileError: err.response?.data?.detail || 'Gagal generate profil' });
     }
@@ -285,6 +298,120 @@ const useProfilerStore = create((set, get) => ({
       set({ annotations: res.data || [] });
     } catch {
       set({ annotations: [] });
+    }
+  },
+
+  fetchGangguanOverview: async () => {
+    const { filters } = get();
+    if (!filters.entityId) return;
+    set({ gangguanLoading: true });
+    try {
+      const res = await axios.get('/api/profiler/gangguan/overview', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+        },
+      });
+      set({ gangguanOverview: res.data, gangguanLoading: false });
+    } catch {
+      set({ gangguanLoading: false });
+    }
+  },
+
+  fetchGangguanCrossDim: async (faultLevel, rcCategory) => {
+    const { filters } = get();
+    if (!filters.entityId) return;
+    set({ gangguanLoading: true });
+    try {
+      const res = await axios.get('/api/profiler/gangguan/cross-dimension', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          fault_level: faultLevel || '',
+          rc_category: rcCategory || '',
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+        },
+      });
+      set({ gangguanCrossDim: res.data, gangguanLoading: false });
+    } catch {
+      set({ gangguanLoading: false });
+    }
+  },
+
+  fetchGangguanDistribution: async (entityLevel, entityId, faultLevel, rcCategory) => {
+    try {
+      const { filters } = get();
+      const res = await axios.get('/api/profiler/gangguan/distribution', {
+        params: {
+          entity_level: entityLevel || filters.entityLevel,
+          entity_id: entityId || filters.entityId,
+          fault_level: faultLevel || '',
+          rc_category: rcCategory || '',
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+        },
+      });
+      set({ gangguanDistribution: res.data });
+    } catch { /* */ }
+  },
+
+  fetchGangguanTopSites: async (faultLevel, rcCategory) => {
+    const { filters } = get();
+    try {
+      const res = await axios.get('/api/profiler/gangguan/top-sites', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          fault_level: faultLevel || filters.faultLevel || '',
+          rc_category: rcCategory || filters.rcCategory || '',
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+        },
+      });
+      set({ gangguanTopSites: res.data });
+    } catch { /* */ }
+  },
+
+  fetchGangguanFaultHeatmap: async (faultLevel) => {
+    const { filters } = get();
+    try {
+      const res = await axios.get('/api/profiler/heatmap', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          granularity: filters.granularity,
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+          fault_level: faultLevel || filters.faultLevel || '',
+        },
+      });
+      set({ gangguanFaultHeatmap: res.data });
+    } catch { /* */ }
+  },
+
+  fetchGangguanData: async () => {
+    const { filters } = get();
+    if (filters.faultLevel || filters.rcCategory) {
+      get().fetchGangguanCrossDim(filters.faultLevel, filters.rcCategory);
+      get().fetchGangguanTopSites(filters.faultLevel, filters.rcCategory);
+      if (filters.faultLevel) {
+        get().fetchGangguanFaultHeatmap(filters.faultLevel);
+      }
+    } else {
+      get().fetchGangguanOverview();
     }
   },
 
