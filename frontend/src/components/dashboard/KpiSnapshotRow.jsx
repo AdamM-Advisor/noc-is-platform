@@ -1,3 +1,5 @@
+import StatusDot from '../ui/StatusDot';
+
 const KPI_CONFIGS = [
   { key: 'total_volume', label: 'Volume', format: (v) => v >= 1000 ? `${(v/1000).toFixed(1)}K` : v, delta: 'volume_mom_pct', deltaUnit: '%', thresholds: null },
   { key: 'sla_pct', label: 'SLA', format: (v) => `${v}%`, delta: 'sla_mom_pp', deltaUnit: 'pp', thresholds: { warn: 90, crit: 85 } },
@@ -6,26 +8,20 @@ const KPI_CONFIGS = [
   { key: 'auto_resolve_pct', label: 'Auto-resolve', format: (v) => `${v}%`, delta: 'auto_mom_pp', deltaUnit: 'pp', thresholds: { warn: 40, crit: 30 } },
 ];
 
-function getStatusColor(value, config) {
-  if (!config.thresholds) return 'text-gray-600';
+function isAlert(value, config) {
+  if (!config.thresholds) return false;
   const { warn, crit } = config.thresholds;
   if (config.invert) {
-    if (value > crit) return 'text-red-600';
-    if (value > warn) return 'text-amber-600';
-    return 'text-green-600';
+    return value > warn;
   }
-  if (value < crit) return 'text-red-600';
-  if (value < warn) return 'text-amber-600';
-  return 'text-green-600';
+  return value < warn;
 }
 
-function getDeltaDisplay(delta, unit, config) {
+function formatDelta(delta, unit) {
   if (delta == null) return null;
-  const isGood = config?.invert ? delta < 0 : delta > 0;
-  const isBad = config?.invert ? delta > 0 : delta < 0;
-  const arrow = isGood ? '▲' : (isBad ? '▼' : '─');
-  const color = isGood ? 'text-green-600' : (isBad ? 'text-red-600' : 'text-gray-400');
-  return <span className={`text-[10px] font-medium ${color}`}>{arrow} {delta > 0 ? '+' : ''}{delta}{unit}</span>;
+  const sign = delta > 0 ? '+' : (delta < 0 ? '\u2212' : '');
+  const abs = Math.abs(delta);
+  return `${sign}${abs}${unit}`;
 }
 
 export default function KpiSnapshotRow({ kpis }) {
@@ -36,15 +32,23 @@ export default function KpiSnapshotRow({ kpis }) {
       {KPI_CONFIGS.map((cfg) => {
         const value = kpis[cfg.key];
         const delta = kpis[cfg.delta];
+        const alert = isAlert(value, cfg);
         return (
           <div key={cfg.key} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-xs text-gray-500 mb-1">{cfg.label}</p>
-            <p className={`text-xl font-bold ${getStatusColor(value, cfg)}`}>
-              {cfg.format(value)}
-            </p>
-            <div className="mt-1">
-              {getDeltaDisplay(delta, cfg.deltaUnit, cfg)}
+            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{cfg.label}</p>
+            <div className="flex items-center justify-center gap-1.5">
+              {alert && <StatusDot status="critical" size={8} />}
+              <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                {cfg.format(value)}
+              </p>
             </div>
+            {delta != null && (
+              <div className="mt-1">
+                <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                  {formatDelta(delta, cfg.deltaUnit)}
+                </span>
+              </div>
+            )}
           </div>
         );
       })}

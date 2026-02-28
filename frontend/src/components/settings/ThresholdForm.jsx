@@ -155,7 +155,7 @@ export default function ThresholdForm() {
         >
           <Save size={14} /> {saving ? 'Saving...' : 'Simpan'}
         </button>
-        {saved && <span className="text-xs text-green-600 font-medium">✓ Tersimpan</span>}
+        {saved && <span className="text-xs font-medium" style={{color: 'var(--text-secondary)'}}>Tersimpan</span>}
       </div>
     </div>
   );

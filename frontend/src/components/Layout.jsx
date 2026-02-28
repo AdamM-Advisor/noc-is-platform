@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, Upload, Settings, Menu, X, Info, Database, Globe, Search, FileText, Bookmark, GitCompare, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart } from 'lucide-react';
 
 const navItems = [
-  { to: '/dashboard', icon: BarChart3, label: 'Dashboard' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/profiler', icon: Search, label: 'Profiler' },
   { to: '/report-card', icon: FileText, label: 'Report Card' },
   { to: '/saved-views', icon: Bookmark, label: 'Saved Views' },
   { to: '/comparison', icon: GitCompare, label: 'Perbandingan' },
-  { to: '/reports', icon: FileSpreadsheet, label: 'Reports' },
+  { to: '/reports', icon: FileBarChart, label: 'Reports' },
   { to: '/upload', icon: Upload, label: 'Upload' },
-  { to: '/master-data', icon: Database, label: 'Master Data' },
-  { to: '/external-data', icon: Globe, label: 'Data Eksternal' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

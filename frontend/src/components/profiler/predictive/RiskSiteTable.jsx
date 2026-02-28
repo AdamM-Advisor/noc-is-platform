@@ -1,7 +1,13 @@
 const RISK_BADGE = {
-  HIGH: 'bg-red-100 text-red-700',
-  MEDIUM: 'bg-yellow-100 text-yellow-700',
-  LOW: 'bg-green-100 text-green-700',
+  HIGH: 'border border-gray-200 bg-gray-50 text-gray-700',
+  MEDIUM: 'border border-gray-200 bg-gray-50 text-gray-700',
+  LOW: 'border border-gray-200 bg-gray-50 text-gray-600',
+};
+
+const RISK_DOT = {
+  HIGH: 'bg-red-500',
+  MEDIUM: 'bg-amber-500',
+  LOW: 'bg-gray-400',
 };
 
 export default function RiskSiteTable({ sites }) {
@@ -31,7 +37,8 @@ export default function RiskSiteTable({ sites }) {
                     {s.name || s.id}
                   </td>
                   <td className="px-2 py-1.5 text-right">
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${RISK_BADGE[level]}`}>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${RISK_BADGE[level]}`}>
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${RISK_DOT[level]}`} />
                       {s.risk_score?.toFixed(0)}
                     </span>
                   </td>

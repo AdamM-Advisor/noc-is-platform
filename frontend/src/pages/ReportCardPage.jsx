@@ -1,18 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileText, Printer, RefreshCw } from 'lucide-react';
 import axios from 'axios';
+import StatusDot, { getStatusLevel } from '../components/ui/StatusDot';
 
 function StatusBadge({ status }) {
   if (!status) return null;
-  const bgMap = {
-    'KRITIS': 'bg-red-100 text-red-700 border-red-300',
-    'PERLU PERHATIAN': 'bg-amber-100 text-amber-700 border-amber-300',
-    'BAIK': 'bg-green-100 text-green-700 border-green-300',
-    'SANGAT BAIK': 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  };
+  const level = getStatusLevel(status.status);
   return (
-    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-bold border ${bgMap[status.status] || 'bg-gray-100 text-gray-700'}`}>
-      {status.icon} {status.status}
+    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-semibold border border-gray-200 bg-white text-gray-700">
+      <StatusDot status={level} /> {status.status}
     </span>
   );
 }
@@ -42,12 +38,12 @@ function TrendSparklines({ trend3m }) {
     const first = vals[0];
     const last = vals[vals.length - 1];
     const change = first > 0 ? ((last - first) / first * 100) : 0;
-    const dir = change > 2 ? '📈' : (change < -2 ? '📉' : '─');
+    const dir = change > 2 ? 'up' : (change < -2 ? 'down' : 'flat');
     return (
       <div className="flex items-center gap-2 text-xs">
         <span className="text-gray-500 w-14">{label}:</span>
         <span className="text-gray-700">{vals.map(v => typeof v === 'number' ? (unit === '%' ? v.toFixed(1) : Math.round(v)) : v).join(' → ')}</span>
-        <span>{dir}</span>
+        <span className="text-gray-400">{dir}</span>
         <span className="text-gray-400">({change > 0 ? '+' : ''}{change.toFixed(1)}%)</span>
       </div>
     );
@@ -82,9 +78,11 @@ function ChildRankingTable({ children }) {
             <td className="px-2 py-1 font-medium text-gray-700">{c.name || c.id}</td>
             <td className="px-2 py-1 text-right text-gray-600">{c.sla_pct}%</td>
             <td className="px-2 py-1 text-right text-gray-600">{Math.round(c.avg_mttr_min)}m</td>
-            <td className="px-2 py-1 text-center">{c.trend_icon}</td>
+            <td className="px-2 py-1 text-center text-gray-500">{c.trend_label || '—'}</td>
             <td className="px-2 py-1 text-center">
-              <span className="text-[10px]" style={{ color: c.status_color }}>{c.status_icon} {c.status_level}</span>
+              <span className="inline-flex items-center gap-1 text-[10px] text-gray-600">
+                <StatusDot status={getStatusLevel(c.status_level)} size={6} /> {c.status_level}
+              </span>
             </td>
           </tr>
         ))}
@@ -97,15 +95,21 @@ function RecommendationList({ recommendations }) {
   if (!recommendations?.length) return null;
   return (
     <div className="space-y-1.5">
-      {recommendations.map((r, i) => (
-        <div key={i} className="text-xs">
-          <p className="font-medium text-gray-700">
-            {r.priority_info?.icon || '⚪'} {i + 1}. {r.message}
-          </p>
-          {r.action && <p className="text-gray-500 ml-4">▶ {r.action}</p>}
-          {r.impact && <p className="text-gray-400 ml-4">📊 {r.impact}</p>}
-        </div>
-      ))}
+      {recommendations.map((r, i) => {
+        const pLevel = r.priority_info?.label?.toLowerCase().includes('critical') ? 'critical'
+          : r.priority_info?.label?.toLowerCase().includes('high') ? 'critical'
+          : r.priority_info?.label?.toLowerCase().includes('medium') ? 'warning'
+          : 'neutral';
+        return (
+          <div key={i} className="text-xs">
+            <p className="font-medium text-gray-700 flex items-center gap-1.5">
+              <StatusDot status={pLevel} size={6} /> {i + 1}. {r.message}
+            </p>
+            {r.action && <p className="text-gray-500 ml-5">{r.action}</p>}
+            {r.impact && <p className="text-gray-400 ml-5">{r.impact}</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }

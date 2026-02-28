@@ -47,31 +47,31 @@ def determine_overall_status(kpis, trend, risk_summary, children):
     n_critical = sum(1 for c in children if c.get("status_level") in ("KRITIS", "critical"))
 
     if sla < target - 5 and sla_trend == "worsening":
-        return {"status": "KRITIS", "icon": "🔴", "color": "#DC2626",
+        return {"status": "KRITIS", "icon": "", "color": "#DC2626",
                 "rule": "SLA jauh di bawah target DAN tren memburuk"}
     if sla < target and sla_trend == "worsening" and has_high_risk:
-        return {"status": "KRITIS", "icon": "🔴", "color": "#DC2626",
+        return {"status": "KRITIS", "icon": "", "color": "#DC2626",
                 "rule": "SLA di bawah target + tren memburuk + risk tinggi"}
     if sla < target or sla_trend == "worsening" or has_high_risk:
-        return {"status": "PERLU PERHATIAN", "icon": "🟡", "color": "#D97706",
+        return {"status": "PERLU PERHATIAN", "icon": "", "color": "#D97706",
                 "rule": "SLA di bawah target ATAU tren memburuk ATAU risk tinggi"}
     if sla >= target + 3 and sla_trend == "improving":
-        return {"status": "SANGAT BAIK", "icon": "🏆", "color": "#059669",
+        return {"status": "SANGAT BAIK", "icon": "", "color": "#059669",
                 "rule": "SLA di atas target+3pp DAN tren membaik"}
-    return {"status": "BAIK", "icon": "🟢", "color": "#16A34A",
+    return {"status": "BAIK", "icon": "", "color": "#16A34A",
             "rule": "SLA memenuhi target, tren tidak memburuk, risk terkendali"}
 
 
 def determine_entity_status(sla, target, sla_quality):
     if sla < target - 5 and sla_quality == "worsening":
-        return {"status": "KRITIS", "icon": "🔴", "color": "#DC2626"}
+        return {"status": "KRITIS", "icon": "", "color": "#DC2626"}
     if sla < target and sla_quality == "worsening":
-        return {"status": "KRITIS", "icon": "🔴", "color": "#DC2626"}
+        return {"status": "KRITIS", "icon": "", "color": "#DC2626"}
     if sla < target or sla_quality == "worsening":
-        return {"status": "PERLU PERHATIAN", "icon": "🟡", "color": "#D97706"}
+        return {"status": "PERLU PERHATIAN", "icon": "", "color": "#D97706"}
     if sla >= target + 3 and sla_quality == "improving":
-        return {"status": "SANGAT BAIK", "icon": "🏆", "color": "#059669"}
-    return {"status": "BAIK", "icon": "🟢", "color": "#16A34A"}
+        return {"status": "SANGAT BAIK", "icon": "", "color": "#059669"}
+    return {"status": "BAIK", "icon": "", "color": "#16A34A"}
 
 
 def generate_overall_narrative(entity_name, status, kpis, trend, children):
@@ -293,7 +293,7 @@ def get_dashboard_data(conn, period, view_level, parent_filter=None):
         trend_info = _compute_sla_trend(hist)
         entity_status = determine_entity_status(esla, sla_target, trend_info["sla_quality"])
 
-        trend_icon = "📉" if trend_info["sla_quality"] == "worsening" else ("📈" if trend_info["sla_quality"] == "improving" else "─")
+        trend_icon = "down" if trend_info["sla_quality"] == "worsening" else ("up" if trend_info["sla_quality"] == "improving" else "")
 
         entities.append({
             "id": eid,

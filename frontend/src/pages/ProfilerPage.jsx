@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, ArrowUpDown, Bookmark, GitCompare, FileText } from 'lucide-react';
+import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, ArrowUpDown, Bookmark, GitCompare, FileText } from 'lucide-react';
 import useProfilerStore from '../stores/profilerStore';
 import TemporalPanel from '../components/profiler/TemporalPanel';
 import GangguanPanel from '../components/profiler/GangguanPanel';
@@ -32,57 +32,53 @@ const KPI_LABELS = {
 };
 
 function StatusBadge({ status, color }) {
-  const colors = {
-    green: 'bg-green-100 text-green-700',
-    yellow: 'bg-yellow-100 text-yellow-700',
-    orange: 'bg-orange-100 text-orange-700',
-    red: 'bg-red-100 text-red-700',
-    amber: 'bg-amber-100 text-amber-700',
-    blue: 'bg-blue-100 text-blue-700',
-    gray: 'bg-gray-100 text-gray-600',
+  const dotColorMap = {
+    green: 'var(--status-good-dot)',
+    yellow: 'var(--status-warning-dot)',
+    orange: 'var(--status-warning-dot)',
+    red: 'var(--status-critical-dot)',
+    amber: 'var(--status-warning-dot)',
+    blue: 'var(--accent-brand)',
+    gray: 'var(--status-neutral-dot)',
   };
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[color] || colors.gray}`}>
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+      <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColorMap[color] || dotColorMap.gray }} />
       {status}
     </span>
   );
 }
 
 function KpiCard({ label, value, unit, target, interpretation, trend, onClick }) {
-  const statusColors = {
-    good: 'border-green-300 bg-green-50',
-    warning: 'border-yellow-300 bg-yellow-50',
-    alert: 'border-orange-300 bg-orange-50',
-    critical: 'border-red-300 bg-red-50',
-    neutral: 'border-gray-200 bg-gray-50',
-  };
-  const dotColors = {
-    good: 'bg-green-500',
-    warning: 'bg-yellow-500',
-    alert: 'bg-orange-500',
-    critical: 'bg-red-500',
-    neutral: 'bg-gray-400',
+  const dotColorMap = {
+    good: 'var(--status-good-dot)',
+    warning: 'var(--status-warning-dot)',
+    alert: 'var(--status-warning-dot)',
+    critical: 'var(--status-critical-dot)',
+    neutral: 'var(--status-neutral-dot)',
   };
   const st = interpretation?.status || 'neutral';
+  const isAlert = st === 'critical' || st === 'alert' || st === 'warning';
   return (
     <div
-      className={`rounded-lg border-2 p-4 cursor-pointer hover:shadow-md transition-shadow ${statusColors[st]}`}
+      className="rounded-lg border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow"
+      style={{ borderLeftWidth: '3px', borderLeftColor: isAlert ? dotColorMap[st] : 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium text-gray-500 uppercase">{label}</span>
-        <span className={`w-2.5 h-2.5 rounded-full ${dotColors[st]}`} />
+        <span className="text-xs font-medium uppercase" style={{ color: 'var(--text-muted)' }}>{label}</span>
+        {isAlert && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColorMap[st] }} />}
       </div>
-      <div className="text-2xl font-bold text-gray-900">
+      <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
         {typeof value === 'number' ? (unit === '%' ? value.toFixed(1) : value >= 1000 ? `${(value / 1000).toFixed(1)}K` : Math.round(value)) : value}
-        {unit && <span className="text-sm font-normal text-gray-500 ml-1">{unit}</span>}
+        {unit && <span className="text-sm font-normal ml-1" style={{ color: 'var(--text-muted)' }}>{unit}</span>}
       </div>
       {target !== undefined && (
-        <div className="text-xs text-gray-500 mt-1">target: {target}{unit}</div>
+        <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>target: {target}{unit}</div>
       )}
-      {trend && <div className="text-xs text-gray-500 mt-0.5">{trend}</div>}
+      {trend && <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{trend}</div>}
       {interpretation && (
-        <div className="text-xs mt-1.5 text-gray-600">{interpretation.text}</div>
+        <div className="text-xs mt-1.5" style={{ color: 'var(--text-secondary)' }}>{interpretation.text}</div>
       )}
     </div>
   );
@@ -90,25 +86,27 @@ function KpiCard({ label, value, unit, target, interpretation, trend, onClick })
 
 function BehaviorBadge({ behavior }) {
   if (!behavior) return null;
-  const colors = {
-    CHRONIC: 'bg-red-100 text-red-800 border-red-200',
-    DETERIORATING: 'bg-orange-100 text-orange-800 border-orange-200',
-    SPORADIC: 'bg-amber-100 text-amber-800 border-amber-200',
-    SEASONAL: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    IMPROVING: 'bg-blue-100 text-blue-800 border-blue-200',
-    HEALTHY: 'bg-green-100 text-green-800 border-green-200',
+  const dotColors = {
+    CHRONIC: 'var(--status-critical-dot)',
+    DETERIORATING: '#F97316',
+    SPORADIC: '#F59E0B',
+    SEASONAL: '#EAB308',
+    IMPROVING: '#3B82F6',
+    HEALTHY: 'var(--status-good-dot)',
   };
+  const dotColor = dotColors[behavior.label] || 'var(--status-neutral-dot)';
   return (
-    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold border ${colors[behavior.label] || colors.HEALTHY}`}>
-      {behavior.icon} {behavior.label}
+    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold border border-gray-200 bg-white text-gray-700">
+      <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />
+      {behavior.label}
     </span>
   );
 }
 
 function TrendIcon({ direction }) {
-  if (direction === 'up') return <TrendingUp size={16} className="text-green-500" />;
-  if (direction === 'down') return <TrendingDown size={16} className="text-red-500" />;
-  return <Minus size={16} className="text-gray-400" />;
+  if (direction === 'up') return <TrendingUp size={16} className="text-gray-500" />;
+  if (direction === 'down') return <TrendingDown size={16} className="text-gray-500" />;
+  return <span className="text-gray-400 text-sm">—</span>;
 }
 
 export default function ProfilerPage() {
@@ -652,7 +650,7 @@ function Breadcrumb({ chain, onNavigate, filters }) {
   return (
     <div className="bg-white rounded-lg border p-3 space-y-1">
       <div className="flex items-center gap-1 text-sm flex-wrap">
-        <span className="text-gray-400">📍</span>
+        <span className="text-gray-400 text-sm">&#9656;</span>
         {chain.map((item, idx) => (
           <span key={item.id} className="flex items-center gap-1">
             {idx > 0 && <ChevronRight size={14} className="text-gray-300" />}
@@ -666,7 +664,7 @@ function Breadcrumb({ chain, onNavigate, filters }) {
         ))}
       </div>
       <div className="text-xs text-gray-400">
-        🕐 {filters.dateFrom || '...'} - {filters.dateTo || '...'} • {granLabel}
+        {filters.dateFrom || '...'} - {filters.dateTo || '...'} | {granLabel}
         {filters.typeTicket && <> • {filters.typeTicket}</>}
         {!filters.typeTicket && <> • Semua Gangguan</>}
       </div>
@@ -727,9 +725,8 @@ function IdentityPanel({ identity, behavior, overallStatus, childComposition, na
         <div className="border rounded-lg p-4 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">Behavior</h3>
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{behavior?.icon}</span>
+            <BehaviorBadge behavior={behavior} />
             <div>
-              <div className="font-semibold text-gray-900">{behavior?.label}</div>
               <div className="text-xs text-gray-500">"{behavior?.reason}"</div>
             </div>
           </div>
@@ -743,7 +740,10 @@ function IdentityPanel({ identity, behavior, overallStatus, childComposition, na
                 const pct = (count / childComposition.total) * 100;
                 return (
                   <div key={label} className="flex items-center gap-2 text-xs">
-                    <span className="w-24">{meta.icon || ''} {label}</span>
+                    <span className="w-24 flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: meta.dotColor || 'var(--status-neutral-dot)' }} />
+                      {label}
+                    </span>
                     <div className="flex-1 bg-gray-100 rounded-full h-3">
                       <div
                         className={`h-3 rounded-full ${meta.barColor || 'bg-gray-400'}`}
@@ -769,12 +769,12 @@ function IdentityPanel({ identity, behavior, overallStatus, childComposition, na
 }
 
 const BEHAVIOR_META = {
-  CHRONIC: { icon: '🔴', barColor: 'bg-red-500' },
-  DETERIORATING: { icon: '📉', barColor: 'bg-orange-500' },
-  SPORADIC: { icon: '🟠', barColor: 'bg-amber-500' },
-  SEASONAL: { icon: '🟡', barColor: 'bg-yellow-500' },
-  IMPROVING: { icon: '📈', barColor: 'bg-blue-500' },
-  HEALTHY: { icon: '🟢', barColor: 'bg-green-500' },
+  CHRONIC: { dotColor: 'var(--status-critical-dot)', barColor: 'bg-red-500' },
+  DETERIORATING: { dotColor: '#F97316', barColor: 'bg-orange-500' },
+  SPORADIC: { dotColor: '#F59E0B', barColor: 'bg-amber-500' },
+  SEASONAL: { dotColor: '#EAB308', barColor: 'bg-yellow-500' },
+  IMPROVING: { dotColor: '#3B82F6', barColor: 'bg-blue-500' },
+  HEALTHY: { dotColor: 'var(--status-good-dot)', barColor: 'bg-green-500' },
 };
 
 function KpiPanel({ kpis, recommendations }) {
@@ -788,7 +788,7 @@ function KpiPanel({ kpis, recommendations }) {
           value={kpis.volume?.avg || 0}
           unit=""
           interpretation={kpis.volume?.interpretation}
-          trend={kpis.volume?.mom_change ? `${kpis.volume.mom_change > 0 ? '▲' : '▼'}${Math.abs(kpis.volume.mom_change).toFixed(1)}% MoM` : null}
+          trend={kpis.volume?.mom_change ? `${kpis.volume.mom_change > 0 ? '+' : ''}${kpis.volume.mom_change.toFixed(1)}% MoM` : null}
         />
         <KpiCard
           label="SLA"
@@ -825,14 +825,11 @@ function KpiPanel({ kpis, recommendations }) {
 
       {recommendations && recommendations.length > 0 && (
         <div className="border-t pt-4">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-            <AlertTriangle size={16} className="text-yellow-500" />
-            Rekomendasi
-          </h4>
+          <h4 className="text-sm font-semibold text-gray-700 mb-2">Rekomendasi</h4>
           <ul className="space-y-1.5">
             {recommendations.map((rec, idx) => (
               <li key={idx} className="flex items-start gap-2 text-sm">
-                <span>{rec.icon}</span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: rec.priority === 'critical' ? 'var(--status-critical-dot)' : rec.priority === 'high' ? 'var(--status-warning-dot)' : 'var(--status-neutral-dot)' }} />
                 <span className="text-gray-700">{rec.text}</span>
               </li>
             ))}
@@ -920,7 +917,10 @@ function ChildrenPanel({ data, loading, sort, order, onSort, onDrillDown, onPage
                     <td className="py-2.5 px-3">{child.escalation_pct}%</td>
                     <td className="py-2.5 px-3"><TrendIcon direction={child.trend_direction} /></td>
                     <td className="py-2.5 px-3">
-                      <span className="text-xs">{child.behavior_icon} {child.behavior_label}</span>
+                      <span className="text-xs inline-flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: (BEHAVIOR_META[child.behavior_label] || {}).dotColor || 'var(--status-neutral-dot)' }} />
+                        {child.behavior_label}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -967,18 +967,16 @@ function ChildrenPanel({ data, loading, sort, order, onSort, onDrillDown, onPage
 }
 
 function RiskBadge({ score }) {
-  let color = 'bg-green-100 text-green-700';
-  let icon = '🟢';
+  let dotColor = 'var(--status-good-dot)';
   if (score >= 60) {
-    color = 'bg-red-100 text-red-700';
-    icon = '🔴';
+    dotColor = 'var(--status-critical-dot)';
   } else if (score >= 35) {
-    color = 'bg-yellow-100 text-yellow-700';
-    icon = '🟡';
+    dotColor = 'var(--status-warning-dot)';
   }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${color}`}>
-      {icon} {score}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+      <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />
+      {score}
     </span>
   );
 }

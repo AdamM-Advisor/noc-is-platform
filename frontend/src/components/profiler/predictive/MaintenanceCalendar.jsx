@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import FormulaBox from './FormulaBox';
 
 const PRIORITY_STYLES = {
-  high: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500', icon: '🔴' },
-  medium: { bg: 'bg-yellow-100', text: 'text-yellow-700', dot: 'bg-yellow-500', icon: '🟡' },
-  low: { bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500', icon: '🟢' },
+  high: { bg: 'bg-gray-50 border-l-2 border-l-red-500', text: 'text-gray-700', dot: 'bg-red-500' },
+  medium: { bg: 'bg-gray-50 border-l-2 border-l-amber-500', text: 'text-gray-700', dot: 'bg-amber-500' },
+  low: { bg: 'bg-gray-50 border-l-2 border-l-gray-400', text: 'text-gray-600', dot: 'bg-gray-400' },
 };
 
 const DAY_NAMES = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
@@ -98,7 +98,7 @@ export default function MaintenanceCalendar({ data }) {
                                   className={`${ps.bg} ${ps.text} rounded px-1 py-0.5 text-[9px] font-medium truncate mb-0.5`}
                                   title={`${item.site_name}: ${item.reason}`}
                                 >
-                                  {ps.icon} {item.site_name || item.site_id}
+                                  {item.site_name || item.site_id}
                                 </div>
                               );
                             })}
@@ -122,16 +122,16 @@ export default function MaintenanceCalendar({ data }) {
 
       {(summary.n_high != null || summary.total_hours != null) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-          <div className="bg-red-50 rounded p-2 border border-red-100">
-            <div className="font-bold text-red-700">{summary.n_high ?? 0}</div>
+          <div className="bg-gray-50 rounded p-2 border-l-4 border-l-red-500 border border-gray-200">
+            <div className="font-bold text-gray-900">{summary.n_high ?? 0}</div>
             <div className="text-gray-500">High Priority</div>
           </div>
-          <div className="bg-yellow-50 rounded p-2 border border-yellow-100">
-            <div className="font-bold text-yellow-700">{summary.n_medium ?? 0}</div>
+          <div className="bg-gray-50 rounded p-2 border-l-4 border-l-amber-500 border border-gray-200">
+            <div className="font-bold text-gray-900">{summary.n_medium ?? 0}</div>
             <div className="text-gray-500">Medium</div>
           </div>
-          <div className="bg-green-50 rounded p-2 border border-green-100">
-            <div className="font-bold text-green-700">{summary.n_low ?? 0}</div>
+          <div className="bg-gray-50 rounded p-2 border-l-4 border-l-gray-400 border border-gray-200">
+            <div className="font-bold text-gray-900">{summary.n_low ?? 0}</div>
             <div className="text-gray-500">Low</div>
           </div>
           <div className="bg-gray-50 rounded p-2 border">
@@ -144,10 +144,10 @@ export default function MaintenanceCalendar({ data }) {
       )}
 
       {data.capacity_alert?.narrative && (
-        <div className={`text-sm px-3 py-2 rounded border ${
-          data.capacity_alert.status === 'overload' ? 'bg-red-50 border-red-200 text-red-700' :
-          data.capacity_alert.status === 'tight' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-          'bg-green-50 border-green-200 text-green-700'
+        <div className={`text-sm px-3 py-2 rounded bg-gray-50 border text-gray-700 ${
+          data.capacity_alert.status === 'overload' ? 'border-l-4 border-l-red-500' :
+          data.capacity_alert.status === 'tight' ? 'border-l-4 border-l-amber-500' :
+          'border-l-4 border-l-gray-300'
         }`}>
           {data.capacity_alert.narrative}
         </div>

@@ -208,11 +208,11 @@ class ReportGenerator:
                                         None, children, None)
             for r in recs:
                 pinfo = {
-                    "SEGERA": {"label": "SEGERA", "icon": "🔴", "class": "segera"},
-                    "MINGGU_INI": {"label": "MINGGU INI", "icon": "🟡", "class": "minggu"},
-                    "BULAN_INI": {"label": "BULAN INI", "icon": "🔵", "class": "bulan"},
-                    "RUTIN": {"label": "RUTIN", "icon": "🟢", "class": "rutin"},
-                }.get(r.get("priority", ""), {"label": "", "icon": "⚪", "class": "rutin"})
+                    "SEGERA": {"label": "SEGERA", "icon": "", "class": "segera"},
+                    "MINGGU_INI": {"label": "MINGGU INI", "icon": "", "class": "minggu"},
+                    "BULAN_INI": {"label": "BULAN INI", "icon": "", "class": "bulan"},
+                    "RUTIN": {"label": "RUTIN", "icon": "", "class": "rutin"},
+                }.get(r.get("priority", ""), {"label": "", "icon": "", "class": "rutin"})
                 r["priority_icon"] = pinfo["icon"]
                 r["priority_class"] = pinfo["class"]
                 r["priority_label"] = pinfo["label"]
@@ -291,12 +291,12 @@ class ReportGenerator:
         sla_target = 90.0
         status = determine_entity_status(sla, sla_target, sla_trend.get("sla_quality", "stable"))
         status_map = {
-            "KRITIS": {"css_class": "kritis", "icon": "🔴"},
-            "PERLU PERHATIAN": {"css_class": "perhatian", "icon": "🟡"},
-            "BAIK": {"css_class": "baik", "icon": "🟢"},
-            "SANGAT BAIK": {"css_class": "sangat-baik", "icon": "🟢"},
+            "KRITIS": {"css_class": "kritis", "icon": ""},
+            "PERLU PERHATIAN": {"css_class": "perhatian", "icon": ""},
+            "BAIK": {"css_class": "baik", "icon": ""},
+            "SANGAT BAIK": {"css_class": "sangat-baik", "icon": ""},
         }
-        info = status_map.get(status.get("status", ""), {"css_class": "baik", "icon": "🟢"})
+        info = status_map.get(status.get("status", ""), {"css_class": "baik", "icon": ""})
         return {**status, **info}
 
     def _get_children(self, conn, entity_level, entity_id, period, parent_col):

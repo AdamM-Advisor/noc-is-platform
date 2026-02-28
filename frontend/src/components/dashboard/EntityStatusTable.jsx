@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import StatusDot from '../ui/StatusDot';
+import { getStatusLevel } from '../ui/StatusDot';
 
 export default function EntityStatusTable({ entities, viewLevel }) {
   const navigate = useNavigate();
@@ -38,6 +40,8 @@ export default function EntityStatusTable({ entities, viewLevel }) {
     </th>
   );
 
+  const isBelowTarget = (slaPct) => slaPct != null && slaPct < 95;
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -53,36 +57,45 @@ export default function EntityStatusTable({ entities, viewLevel }) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((e) => (
-            <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="px-3 py-2.5 font-medium text-gray-700">{e.name || e.id}</td>
-              <td className="px-3 py-2.5 text-gray-600">{e.sla_pct}%</td>
-              <td className="px-3 py-2.5 text-gray-600">{Math.round(e.avg_mttr_min)}m</td>
-              <td className="px-3 py-2.5 text-gray-600">
-                {e.total_volume >= 1000 ? `${(e.total_volume / 1000).toFixed(1)}K` : e.total_volume}
-              </td>
-              <td className="px-3 py-2.5 text-center">{e.trend_icon}</td>
-              <td className="px-3 py-2.5 text-center">
-                <span
-                  className="inline-block px-2 py-0.5 rounded text-[10px] font-medium"
-                  style={{ backgroundColor: e.status_color + '15', color: e.status_color }}
+          {sorted.map((e) => {
+            const statusLevel = getStatusLevel(e.status_level);
+            return (
+              <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--text-primary)' }}>{e.name || e.id}</td>
+                <td
+                  className="px-3 py-2.5"
+                  style={{ color: isBelowTarget(e.sla_pct) ? 'var(--status-critical-text)' : 'var(--text-secondary)' }}
                 >
-                  {e.status_icon} {e.status_level}
-                </span>
-              </td>
-              <td className="px-3 py-2.5 text-right">
-                <button
-                  onClick={() => handleViewProfile(e)}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Lihat Profil →
-                </button>
-              </td>
-            </tr>
-          ))}
+                  {e.sla_pct}%
+                </td>
+                <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)' }}>{Math.round(e.avg_mttr_min)}m</td>
+                <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)' }}>
+                  {e.total_volume >= 1000 ? `${(e.total_volume / 1000).toFixed(1)}K` : e.total_volume}
+                </td>
+                <td className="px-3 py-2.5 text-center" style={{ color: 'var(--text-muted)' }}>
+                  {e.trend_label || '—'}
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                    <StatusDot status={statusLevel} size={7} />
+                    {e.status_level}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <button
+                    onClick={() => handleViewProfile(e)}
+                    className="text-xs font-medium"
+                    style={{ color: 'var(--accent-brand)' }}
+                  >
+                    Lihat Profil
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-      <p className="text-[10px] text-gray-400 mt-1.5 px-1">
+      <p className="text-[10px] mt-1.5 px-1" style={{ color: 'var(--text-muted)' }}>
         Sorted by: {sortKey === 'sla_pct' ? 'SLA' : sortKey} {sortDir === 'asc' ? 'ASC' : 'DESC'} (klik header untuk sort)
       </p>
     </div>

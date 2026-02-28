@@ -3,12 +3,12 @@ export default function BreachCountdown({ children: items, narrative }) {
 
   const getStatusStyle = (item) => {
     if (item.status === 'breached' || item.status === 'already_breached') {
-      return { badge: 'bg-red-100 text-red-700', icon: '🔴', label: 'Breached' };
+      return { badge: 'border border-red-200 bg-gray-50 text-red-700', dotColor: 'var(--status-critical-dot)', label: 'Breached' };
     }
     if (item.breach_in != null && item.breach_in <= 4) {
-      return { badge: 'bg-yellow-100 text-yellow-700', icon: '🟡', label: `~${item.breach_in}w` };
+      return { badge: 'border border-amber-200 bg-gray-50 text-amber-700', dotColor: 'var(--status-warning-dot)', label: `~${item.breach_in}w` };
     }
-    return { badge: 'bg-green-100 text-green-700', icon: '🟢', label: 'Aman' };
+    return { badge: 'border border-gray-200 bg-gray-50 text-gray-600', dotColor: 'var(--status-neutral-dot)', label: 'Aman' };
   };
 
   return (
@@ -40,11 +40,12 @@ export default function BreachCountdown({ children: items, narrative }) {
                     {item.projected_4w != null ? `${item.projected_4w.toFixed(1)}%` : '—'}
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <span className="text-sm">{st.icon}</span>
-                    <span className="ml-1">{item.breach_in != null && item.breach_in > 0 ? `~${item.breach_in} minggu` : st.label}</span>
+                    <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: st.dotColor }} />
+                    <span>{item.breach_in != null && item.breach_in > 0 ? `~${item.breach_in} minggu` : st.label}</span>
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${st.badge}`}>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${st.badge}`}>
+                      <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: st.dotColor }} />
                       {st.label}
                     </span>
                   </td>

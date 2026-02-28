@@ -1,7 +1,51 @@
 @import "tailwindcss";
 
+:root {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F8FAFC;
+  --bg-hover: #F1F5F9;
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+
+  --accent-brand: #1E40AF;
+  --accent-brand-light: #DBEAFE;
+
+  --status-critical-text: #991B1B;
+  --status-critical-bg: #FEF2F2;
+  --status-critical-border: #FECACA;
+  --status-critical-dot: #DC2626;
+
+  --status-warning-text: #92400E;
+  --status-warning-bg: #FFFBEB;
+  --status-warning-border: #FDE68A;
+  --status-warning-dot: #D97706;
+
+  --status-good-text: #166534;
+  --status-good-bg: #F0FDF4;
+  --status-good-border: #BBF7D0;
+  --status-good-dot: #16A34A;
+
+  --status-neutral-text: #475569;
+  --status-neutral-bg: #F8FAFC;
+  --status-neutral-dot: #94A3B8;
+
+  --chart-primary: #1E40AF;
+  --chart-secondary: #64748B;
+  --chart-target: #DC2626;
+  --chart-grid: #F1F5F9;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 @media print {
-  header, aside, footer, .print\\:hidden {
+  header, aside, footer, .print\:hidden {
     display: none !important;
   }
   main {

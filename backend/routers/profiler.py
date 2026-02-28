@@ -703,9 +703,9 @@ async def get_peer_ranking(
         narrative += " (kuartil bawah — 25% terendah)."
 
     if current_rank == 1:
-        narrative = f"🥇 Peringkat terbaik dari {total} {entity_level.title()}."
+        narrative = f"Peringkat terbaik dari {total} {entity_level.title()}."
     elif current_rank == total:
-        narrative = f"🔴 Peringkat terendah dari {total} {entity_level.title()}."
+        narrative = f" Peringkat terendah dari {total} {entity_level.title()}."
 
     diff = current_value - median
     if higher_is_better:
@@ -818,23 +818,23 @@ def _classify_trend_direction(kpi_name, slope, period_label="bulan"):
     if slope > 0:
         if positive_up:
             return {
-                "direction": "up", "icon": "📈", "quality": "improving",
+                "direction": "up", "icon": "", "quality": "improving",
                 "narrative": f"Tren {kpi_label} naik (membaik) {slope:.1f}/{period_label}"
             }
         else:
             return {
-                "direction": "up", "icon": "📈", "quality": "worsening",
+                "direction": "up", "icon": "", "quality": "worsening",
                 "narrative": f"Tren {kpi_label} naik (memburuk) {slope:.1f}/{period_label}"
             }
     else:
         if positive_up:
             return {
-                "direction": "down", "icon": "📉", "quality": "worsening",
+                "direction": "down", "icon": "", "quality": "worsening",
                 "narrative": f"Tren {kpi_label} turun (memburuk) {abs(slope):.1f}/{period_label}"
             }
         else:
             return {
-                "direction": "down", "icon": "📉", "quality": "improving",
+                "direction": "down", "icon": "", "quality": "improving",
                 "narrative": f"Tren {kpi_label} turun (membaik) {abs(slope):.1f}/{period_label}"
             }
 
@@ -857,13 +857,13 @@ def _detect_anomalies(data_points, kpi_name):
             sev = "significant" if abs(z) > 3 else "moderate"
             if abs(z) > 3:
                 narr = (
-                    f"🔴 ANOMALI SIGNIFIKAN pada {dp['period']}: "
+                    f" ANOMALI SIGNIFIKAN pada {dp['period']}: "
                     f"{kpi_label} = {dp['value']:.1f} ({abs(z):.1f}σ {direction} rata-rata "
                     f"{mean_val:.1f} ± {std_val:.1f}). Investigasi penyebab diperlukan."
                 )
             else:
                 narr = (
-                    f"⚡ Anomali pada {dp['period']}: {kpi_label} = {dp['value']:.1f} "
+                    f" Anomali pada {dp['period']}: {kpi_label} = {dp['value']:.1f} "
                     f"(z-score: {z:.1f}). Rata-rata historis: {mean_val:.1f} ± {std_val:.1f}."
                 )
             anomalies.append({
@@ -968,11 +968,11 @@ async def get_trends(
 
         if trend_info["quality"] == "worsening" and consec >= 3:
             trend_info["narrative"] += (
-                f" 🔴 Tren memburuk selama {consec} periode berturut-turut. Intervensi segera diperlukan."
+                f"  Tren memburuk selama {consec} periode berturut-turut. Intervensi segera diperlukan."
             )
         if trend_info["quality"] == "worsening" and abs(slope) > 2 * thr:
             trend_info["narrative"] += (
-                f" 🔴 Penurunan CEPAT — laju {abs(slope):.1f} per bulan jauh di atas batas normal ({thr})."
+                f"  Penurunan CEPAT — laju {abs(slope):.1f} per bulan jauh di atas batas normal ({thr})."
             )
 
         projection = None
@@ -1152,7 +1152,7 @@ async def get_heatmap(
 
         if peak_factor > 2.0:
             parts.append(
-                f"⚠️ Hotspot: {y_labels[peak_y]} {x_labels[peak_x]} mengalami "
+                f" Hotspot: {y_labels[peak_y]} {x_labels[peak_x]} mengalami "
                 f"{peak_factor:.1f}× volume rata-rata ({peak_val:,} vs avg {avg_val:,.0f}). "
                 f"Pertimbangkan penambahan resource pada periode ini."
             )
@@ -1311,7 +1311,7 @@ async def get_child_trends(
         worst_names = ", ".join(f"{c['entity_name']} ({c['slope']:+.1f}pp/bln)" for c in worst)
         entity_name = _get_entity_name(conn, entity_level, entity_id) if conn else entity_id
         parts.append(
-            f"⚠️ Meskipun secara keseluruhan "
+            f" Meskipun secara keseluruhan "
             f"{'stabil' if parent_trend['quality'] == 'neutral' else 'membaik'}, "
             f"{n_worsening} {child_type_label} ({n_worsening / total * 100:.0f}%) "
             f"menunjukkan penurunan ({worst_names}). "
@@ -1320,7 +1320,7 @@ async def get_child_trends(
 
     if n_worsening == total and total > 0:
         parts.append(
-            f"🔴 SEMUA {child_type_label} menunjukkan tren memburuk. "
+            f" SEMUA {child_type_label} menunjukkan tren memburuk. "
             f"Masalah bersifat sistemik."
         )
 

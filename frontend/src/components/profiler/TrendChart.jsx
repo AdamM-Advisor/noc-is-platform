@@ -54,7 +54,6 @@ function CustomTooltip({ active, payload, label, anomalyMap, annotationMap }) {
       )}
       {annots.map((a, i) => (
         <div key={i} className="mt-1 pt-1 border-t border-blue-100 text-blue-600">
-          <span className="mr-1">{a.icon}</span>
           <span className="font-medium">{a.title}</span>
           {a.description && <span className="text-blue-500"> — {a.description}</span>}
           <span className="text-blue-400 ml-1">({a.source})</span>
@@ -145,7 +144,7 @@ export default function TrendChart({
       .filter(a => a.show_on_chart && periods.has(a.date?.substring(0, 7)))
       .map(a => ({
         xLabel: periodToLabel[a.date?.substring(0, 7)] || a.date?.substring(0, 7),
-        icon: a.icon || '📌',
+        icon: '|',
         title: a.title,
         color: a.color || '#6366F1',
       }));
@@ -207,12 +206,15 @@ export default function TrendChart({
       </div>
 
       {primaryData.trend?.narrative && (
-        <div className={`text-sm px-3 py-2 rounded border ${
-          primaryData.trend.quality === 'worsening' ? 'bg-red-50 border-red-200 text-red-700' :
-          primaryData.trend.quality === 'improving' ? 'bg-green-50 border-green-200 text-green-700' :
-          'bg-gray-50 border-gray-200 text-gray-600'
-        }`}>
-          {primaryData.trend.icon} {primaryData.trend.narrative}
+        <div
+          className="text-sm px-3 py-2 rounded-r border"
+          style={{
+            borderLeft: `3px solid ${primaryData.trend.quality === 'worsening' ? 'var(--status-critical-dot)' : primaryData.trend.quality === 'improving' ? 'var(--status-good-dot)' : 'var(--border)'}`,
+            backgroundColor: 'var(--bg-secondary)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          {primaryData.trend.narrative}
         </div>
       )}
 

@@ -38,9 +38,9 @@ export default function SlaProjection({ data }) {
     return rows;
   }, [data]);
 
-  const statusColor = data.status === 'already_breached' ? 'bg-red-50 border-red-200 text-red-700' :
-    data.status === 'breach_predicted' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-    'bg-green-50 border-green-200 text-green-700';
+  const statusBorder = data.status === 'already_breached' ? 'border-l-4 border-l-red-500' :
+    data.status === 'breach_predicted' ? 'border-l-4 border-l-amber-500' :
+    'border-l-4 border-l-gray-300';
 
   return (
     <div className="space-y-4">
@@ -93,7 +93,7 @@ export default function SlaProjection({ data }) {
       </ResponsiveContainer>
 
       {data.narrative && (
-        <div className={`text-sm px-3 py-2 rounded border ${statusColor}`}>
+        <div className={`text-sm px-3 py-2 rounded bg-gray-50 border text-gray-700 ${statusBorder}`}>
           {data.narrative}
         </div>
       )}

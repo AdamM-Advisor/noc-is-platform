@@ -58,11 +58,11 @@ async def dashboard_overview(req: DashboardRequest):
     recs = rec_engine.generate(entity, kpis, trend, None, data["entities"], None)
     for r in recs:
         r["priority_info"] = {
-            "SEGERA": {"label": "SEGERA", "icon": "🔴", "color": "#DC2626"},
-            "MINGGU_INI": {"label": "MINGGU INI", "icon": "🟡", "color": "#D97706"},
-            "BULAN_INI": {"label": "BULAN INI", "icon": "🔵", "color": "#2563EB"},
-            "RUTIN": {"label": "RUTIN", "icon": "🟢", "color": "#16A34A"},
-        }.get(r["priority"], {"label": r["priority"], "icon": "⚪", "color": "#6B7280"})
+            "SEGERA": {"label": "SEGERA", "icon": "", "color": "#DC2626"},
+            "MINGGU_INI": {"label": "MINGGU INI", "icon": "", "color": "#D97706"},
+            "BULAN_INI": {"label": "BULAN INI", "icon": "", "color": "#2563EB"},
+            "RUTIN": {"label": "RUTIN", "icon": "", "color": "#16A34A"},
+        }.get(r["priority"], {"label": r["priority"], "icon": "", "color": "#6B7280"})
 
     data["recommendations"] = recs
     return data

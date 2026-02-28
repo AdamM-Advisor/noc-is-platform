@@ -19,6 +19,7 @@ Not specified.
 The platform follows a client-server architecture with a Python/FastAPI backend and a React/Vite frontend. Data persistence and analytical processing are handled by DuckDB.
 
 **UI/UX Decisions:**
+- **Visual Design**: "Muted Professional" theme — no emojis anywhere (frontend or backend). Status indicators use 8px CSS dots (StatusDot component). Banners use border-left accent + neutral #F8FAFC background (StatusBanner component). KPI values always black (#0F172A). Deltas always muted gray (#475569). No colored arrows (▲▼). Color palette: --text-primary #0F172A, --text-secondary #475569, --text-muted #94A3B8, --accent-brand #1E40AF. Status colors: critical #DC2626, warning #D97706, good #16A34A, neutral #94A3B8. Sidebar: navy #1B2A4A. Report PDF templates use same muted palette with CSS dot spans instead of emoji.
 - The frontend uses React 18 with Vite for a fast development experience and Tailwind CSS for utility-first styling.
 - Zustand is used for state management, and Recharts is employed for data visualization, providing interactive and informative charts (e.g., ComposedChart for trends, RadarChart for risk, ScatterChart for patterns).
 - Common UI patterns include universal loading/error/empty states, and a "Danger Zone" component with confirmation for sensitive operations.

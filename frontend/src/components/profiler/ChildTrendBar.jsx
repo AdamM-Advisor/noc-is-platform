@@ -65,14 +65,17 @@ export default function ChildTrendBar({ data, loading, kpi, onKpiChange, entityL
 
       {data.summary && (
         <div className="flex gap-4 text-xs">
-          <span className="px-2 py-1 rounded bg-green-50 text-green-700 font-medium">
-            ↑ {data.summary.n_improving} membaik
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-50 text-gray-600 font-medium border border-gray-200">
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--status-good-dot)' }} />
+            {data.summary.n_improving} membaik
           </span>
-          <span className="px-2 py-1 rounded bg-gray-100 text-gray-600 font-medium">
-            ─ {data.summary.n_stable} stabil
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-50 text-gray-600 font-medium border border-gray-200">
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--status-neutral-dot)' }} />
+            {data.summary.n_stable} stabil
           </span>
-          <span className="px-2 py-1 rounded bg-red-50 text-red-700 font-medium">
-            ↓ {data.summary.n_worsening} memburuk
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-50 text-gray-600 font-medium border border-gray-200">
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--status-critical-dot)' }} />
+            {data.summary.n_worsening} memburuk
           </span>
         </div>
       )}
@@ -122,19 +125,15 @@ export default function ChildTrendBar({ data, loading, kpi, onKpiChange, entityL
               <span className="w-14 text-xs text-gray-500 text-right">
                 {child.current_value.toFixed(1)}
               </span>
-              <span className="text-sm w-4">{child.icon}</span>
+              <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isWorsening ? '#DC2626' : isImproving ? '#16A34A' : '#94A3B8' }} />
             </div>
           );
         })}
       </div>
 
       {data.narrative && (
-        <div className={`text-sm px-3 py-2 rounded border ${
-          data.narrative.includes('⚠️') || data.narrative.includes('🔴')
-            ? 'bg-amber-50 border-amber-200 text-amber-700'
-            : 'bg-gray-50 border-gray-200 text-gray-600'
-        }`}>
-          {data.narrative}
+        <div className="text-sm px-3 py-2 rounded border bg-gray-50 border-gray-200 text-gray-600">
+          {data.narrative.replace(/[⚠️🔴🟡🟢📉📈🟠]/g, '').trim()}
         </div>
       )}
     </div>

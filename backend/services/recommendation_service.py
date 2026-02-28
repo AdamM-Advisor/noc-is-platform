@@ -5,10 +5,10 @@ logger = logging.getLogger(__name__)
 PRIORITY_ORDER = {"SEGERA": 0, "MINGGU_INI": 1, "BULAN_INI": 2, "RUTIN": 3}
 
 PRIORITY_LABELS = {
-    "SEGERA": {"label": "SEGERA", "icon": "🔴", "color": "#DC2626"},
-    "MINGGU_INI": {"label": "MINGGU INI", "icon": "🟡", "color": "#D97706"},
-    "BULAN_INI": {"label": "BULAN INI", "icon": "🔵", "color": "#2563EB"},
-    "RUTIN": {"label": "RUTIN", "icon": "🟢", "color": "#16A34A"},
+    "SEGERA": {"label": "SEGERA", "icon": "", "color": "#DC2626"},
+    "MINGGU_INI": {"label": "MINGGU INI", "icon": "", "color": "#D97706"},
+    "BULAN_INI": {"label": "BULAN INI", "icon": "", "color": "#2563EB"},
+    "RUTIN": {"label": "RUTIN", "icon": "", "color": "#16A34A"},
 }
 
 CHAINS = [
@@ -78,7 +78,7 @@ class RecommendationEngine:
         if sla >= target + 3 and sla_quality != "worsening":
             recs.append({
                 "rule_id": "R04", "priority": "RUTIN", "category": "SLA",
-                "message": f"✅ SLA ({sla:.1f}%) di atas target dengan margin baik.",
+                "message": f"SLA ({sla:.1f}%) di atas target dengan margin baik.",
                 "action": "Pertahankan. Share best practice ke peers.",
             })
 
@@ -187,7 +187,7 @@ class RecommendationEngine:
             for a in anomalies[:1]:
                 recs.append({
                     "rule_id": "R15", "priority": "SEGERA", "category": "TREND",
-                    "message": f"⚡ Anomali terdeteksi: {a.get('kpi', '')} = {a.get('value', '')} (z-score: {a.get('z', 0):.1f}).",
+                    "message": f"Anomali terdeteksi: {a.get('kpi', '')} = {a.get('value', '')} (z-score: {a.get('z', 0):.1f}).",
                     "action": "Investigasi: insiden besar, perubahan config, atau error data?",
                 })
 
@@ -252,7 +252,7 @@ class RecommendationEngine:
         if sla_quality == "improving" and consecutive >= 3:
             recs.append({
                 "rule_id": "R19", "priority": "RUTIN", "category": "POSITIVE",
-                "message": f"✅ Perbaikan konsisten: SLA naik {slope:.1f}pp/bulan selama {consecutive} bulan.",
+                "message": f"Perbaikan konsisten: SLA naik {slope:.1f}pp/bulan selama {consecutive} bulan.",
                 "action": "Pertahankan. Dokumentasikan best practice untuk peers.",
             })
 
@@ -260,7 +260,7 @@ class RecommendationEngine:
         if mttr_quality == "improving":
             recs.append({
                 "rule_id": "R20", "priority": "RUTIN", "category": "POSITIVE",
-                "message": "✅ MTTR menunjukkan tren perbaikan.",
+                "message": "MTTR menunjukkan tren perbaikan.",
                 "action": "Pertahankan efisiensi repair. Evaluasi faktor pendukung.",
             })
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ArrowRightLeft } from 'lucide-react';
+import { Search, ArrowRightLeft, AlertTriangle } from 'lucide-react';
 import axios from 'axios';
 
 const LEVEL_OPTIONS = [
@@ -34,7 +34,7 @@ function ProfilePanel({ label, profile, onChange, options, color }) {
   }, [profile.entity_level, areas, regionals, nops, tos]);
 
   return (
-    <div className={`border-2 rounded-lg p-4 space-y-3 ${color}`}>
+    <div className={`border rounded-lg p-4 space-y-3 ${color}`}>
       <div className="text-sm font-semibold text-gray-700">{label}</div>
 
       <div>
@@ -125,8 +125,8 @@ export default function ComparisonSelector({ profileA, profileB, onChangeA, onCh
 
   return (
     <div className="bg-white rounded-lg border shadow-sm p-5 space-y-4">
-      <div className="flex items-center gap-2 text-lg font-semibold text-gray-800">
-        <ArrowRightLeft size={20} className="text-blue-600" />
+      <div className="flex items-center gap-2 text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <ArrowRightLeft size={20} style={{ color: 'var(--accent-brand)' }} />
         Comparison Mode
       </div>
 
@@ -136,36 +136,45 @@ export default function ComparisonSelector({ profileA, profileB, onChangeA, onCh
           profile={profileA}
           onChange={onChangeA}
           options={options}
-          color="border-blue-200 bg-blue-50/30"
+          color="border-gray-200 bg-gray-50/30"
         />
         <ProfilePanel
           label="Profil B"
           profile={profileB}
           onChange={onChangeB}
           options={options}
-          color="border-emerald-200 bg-emerald-50/30"
+          color="border-gray-200 bg-gray-50/30"
         />
       </div>
 
       {detectedType && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Tipe Perbandingan:</span>
-          <span className="px-2 py-0.5 bg-gray-100 rounded-full text-xs font-medium text-gray-700">
+          <span style={{ color: 'var(--text-muted)' }}>Tipe Perbandingan:</span>
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
             {TYPE_LABELS[detectedType] || detectedType}
           </span>
         </div>
       )}
 
       {profileA.entity_level !== profileB.entity_level && profileA.entity_id && profileB.entity_id && (
-        <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          ⚠️ Level entitas harus sama untuk membandingkan.
+        <div
+          className="text-sm rounded-lg px-3 py-2 flex items-center gap-2"
+          style={{
+            color: 'var(--status-warning-text)',
+            backgroundColor: 'var(--status-warning-bg)',
+            border: '1px solid var(--status-warning-border)',
+          }}
+        >
+          <AlertTriangle size={14} />
+          Level entitas harus sama untuk membandingkan.
         </div>
       )}
 
       <button
         onClick={onCompare}
         disabled={!canCompare || loading}
-        className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        className="text-white px-5 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        style={{ backgroundColor: 'var(--accent-brand)' }}
       >
         {loading ? (
           <>

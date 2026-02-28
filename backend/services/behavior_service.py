@@ -11,12 +11,12 @@ VOLUME_THRESHOLDS = {
 }
 
 BEHAVIOR_META = {
-    "CHRONIC": {"icon": "🔴", "color": "red", "label_id": "Kronis"},
-    "DETERIORATING": {"icon": "📉", "color": "orange", "label_id": "Memburuk"},
-    "SPORADIC": {"icon": "🟠", "color": "amber", "label_id": "Sporadis"},
-    "SEASONAL": {"icon": "🟡", "color": "yellow", "label_id": "Musiman"},
-    "IMPROVING": {"icon": "📈", "color": "blue", "label_id": "Membaik"},
-    "HEALTHY": {"icon": "🟢", "color": "green", "label_id": "Sehat"},
+    "CHRONIC": {"icon": "", "color": "red", "label_id": "Kronis"},
+    "DETERIORATING": {"icon": "", "color": "orange", "label_id": "Memburuk"},
+    "SPORADIC": {"icon": "", "color": "amber", "label_id": "Sporadis"},
+    "SEASONAL": {"icon": "", "color": "yellow", "label_id": "Musiman"},
+    "IMPROVING": {"icon": "", "color": "blue", "label_id": "Membaik"},
+    "HEALTHY": {"icon": "", "color": "green", "label_id": "Sehat"},
 }
 
 
@@ -218,7 +218,7 @@ def generate_recommendations(kpis, behavior, children_summary=None):
             worst_name = children_summary["worst"].get("name", worst_name)
         recs.append({
             "priority": "critical" if delta > 5 else "warning",
-            "icon": "🔴" if delta > 5 else "🟡",
+            "icon": "",
             "text": f"SLA gap {delta:.1f}pp — fokus perbaikan pada {worst_name}."
         })
 
@@ -226,7 +226,7 @@ def generate_recommendations(kpis, behavior, children_summary=None):
     if mttr > 720:
         recs.append({
             "priority": "warning",
-            "icon": "🟡",
+            "icon": "",
             "text": f"MTTR {mttr:.0f} menit — perlu percepatan proses perbaikan."
         })
 
@@ -236,7 +236,7 @@ def generate_recommendations(kpis, behavior, children_summary=None):
             type_label = children_summary.get("type_label", "entitas")
             recs.append({
                 "priority": "warning",
-                "icon": "🟡",
+                "icon": "",
                 "text": f"{n_det} {type_label} memburuk — monitor dan intervensi."
             })
 
@@ -244,7 +244,7 @@ def generate_recommendations(kpis, behavior, children_summary=None):
     if esc > 7:
         recs.append({
             "priority": "critical",
-            "icon": "🔴",
+            "icon": "",
             "text": f"Eskalasi {esc:.1f}% (>7%) — review kompetensi/kompleksitas."
         })
 
@@ -252,7 +252,7 @@ def generate_recommendations(kpis, behavior, children_summary=None):
     if rep > 25:
         recs.append({
             "priority": "critical",
-            "icon": "🔴",
+            "icon": "",
             "text": f"Repeat {rep:.1f}% — RC belum solved, RCA mendalam diperlukan."
         })
 

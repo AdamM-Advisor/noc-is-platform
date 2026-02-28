@@ -66,12 +66,13 @@ export default function RiskRadarChart({ data }) {
 
         <div className="w-full md:w-1/2 space-y-3">
           <div className="flex items-center gap-3">
-            <span className="text-3xl font-bold" style={{ color: status.color || '#374151' }}>
-              {status.icon} {score.toFixed(0)}
+            <span className="text-3xl font-bold text-gray-900">
+              {score.toFixed(0)}
             </span>
             <span className="text-lg text-gray-500">/ 100</span>
           </div>
-          <div className="text-sm font-semibold" style={{ color: status.color }}>
+          <div className="text-sm font-semibold text-gray-600 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: status.color || '#94A3B8' }} />
             Status: {status.level || 'N/A'}
           </div>
 
@@ -91,10 +92,10 @@ export default function RiskRadarChart({ data }) {
           </div>
 
           {data.narrative && (
-            <div className={`text-sm px-3 py-2 rounded border mt-3 ${
-              score >= 70 ? 'bg-red-50 border-red-200 text-red-700' :
-              score >= 40 ? 'bg-amber-50 border-amber-200 text-amber-700' :
-              'bg-green-50 border-green-200 text-green-700'
+            <div className={`text-sm px-3 py-2 rounded bg-gray-50 border text-gray-700 mt-3 ${
+              score >= 70 ? 'border-l-4 border-l-red-500' :
+              score >= 40 ? 'border-l-4 border-l-amber-500' :
+              'border-l-4 border-l-gray-300'
             }`}>
               {data.narrative}
             </div>

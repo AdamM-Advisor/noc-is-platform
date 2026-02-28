@@ -56,7 +56,7 @@ export default function PredictivePanel({
       {show4A && riskScore && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1">
-            🎯 4A: Risk Assessment
+            4A: Risk Assessment
           </p>
           <RiskRadarChart data={riskScore} />
         </div>
@@ -65,7 +65,7 @@ export default function PredictivePanel({
       {show4B && riskAggregation && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1">
-            🎯 4B: Risk Overview
+            4B: Risk Overview
           </p>
           <RiskAggregation data={riskAggregation} />
           <RiskSiteTable sites={riskAggregation.top_sites} />
@@ -75,7 +75,7 @@ export default function PredictivePanel({
       {show4C && forecast && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1">
-            📈 4C: Volume Forecast
+            4C: Volume Forecast
           </p>
           <VolumeForecast data={forecast} />
         </div>
@@ -84,7 +84,7 @@ export default function PredictivePanel({
       {show4D && slaBreach && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1">
-            📉 4D: SLA Breach Prediction
+            4D: SLA Breach Prediction
           </p>
           <SlaProjection data={slaBreach} />
           {!isSite && slaBreach.children_breach && (
@@ -98,12 +98,12 @@ export default function PredictivePanel({
       {show4E && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1">
-            🔄 4E: Pattern Detection
+            4E: Pattern Detection
           </p>
           {isSite && pattern && (
             <div className="space-y-2">
               {pattern.pattern_detected ? (
-                <div className="text-sm px-3 py-2 rounded border bg-amber-50 border-amber-200 text-amber-700">
+                <div className="text-sm px-3 py-2 rounded border-l-4 border-amber-400 bg-gray-50 text-gray-700">
                   {pattern.narrative}
                 </div>
               ) : (
@@ -112,8 +112,8 @@ export default function PredictivePanel({
                 </div>
               )}
               {pattern.maintenance_window && (
-                <div className="text-sm px-3 py-2 rounded border bg-blue-50 border-blue-200 text-blue-700">
-                  🗓️ {pattern.maintenance_window.narrative}
+                <div className="text-sm px-3 py-2 rounded border-l-4 border-gray-300 bg-gray-50 text-gray-700">
+                  {pattern.maintenance_window.narrative}
                 </div>
               )}
             </div>
@@ -130,7 +130,7 @@ export default function PredictivePanel({
       {show4F && maintenanceCalendar && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-1">
-            🗓️ 4F: Maintenance Calendar
+            4F: Maintenance Calendar
           </p>
           <MaintenanceCalendar data={maintenanceCalendar} />
           <MaintenanceTable schedule={maintenanceCalendar.schedule} />

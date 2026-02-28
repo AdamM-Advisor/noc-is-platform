@@ -294,9 +294,9 @@ async def get_sla_breach(
         n_predicted = sum(1 for c in children_breach if c["status"] == "breach_predicted")
         parts = []
         if n_breached:
-            parts.append(f"🔴 {n_breached} entitas sudah breach")
+            parts.append(f" {n_breached} entitas sudah breach")
         if n_predicted:
-            parts.append(f"⚠️ {n_predicted} entitas diprediksi breach")
+            parts.append(f" {n_predicted} entitas diprediksi breach")
         children_breach_narrative = ". ".join(parts) + "." if parts else None
 
     if not sla_data or len(sla_data) < 3:

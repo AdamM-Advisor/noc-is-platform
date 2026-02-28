@@ -8,11 +8,11 @@ const TYPE_LABELS = {
   annual: 'Tahunan',
 };
 
-const STATUS_STYLES = {
-  completed: 'bg-green-100 text-green-700',
-  generating: 'bg-blue-100 text-blue-700',
-  pending: 'bg-yellow-100 text-yellow-700',
-  failed: 'bg-red-100 text-red-700',
+const STATUS_COLORS = {
+  completed: 'var(--status-good-dot)',
+  generating: 'var(--accent-brand)',
+  pending: 'var(--status-warning-dot)',
+  failed: 'var(--status-critical-dot)',
 };
 
 function ReportHistoryTable({ reports, total, page, perPage, onPageChange, onDelete, onPreview }) {
@@ -57,7 +57,16 @@ function ReportHistoryTable({ reports, total, page, perPage, onPageChange, onDel
                 </td>
                 <td className="px-4 py-3 text-gray-600">{r.period_label || `${r.period_start} — ${r.period_end}`}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: STATUS_COLORS[r.status] || 'var(--status-neutral-dot)',
+                      }}
+                    />
                     {r.status}
                   </span>
                 </td>

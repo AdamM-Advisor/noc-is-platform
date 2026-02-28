@@ -42,8 +42,8 @@ export default function RiskAggregation({ data }) {
               <div className="text-xl font-bold text-gray-900">{summary.total ?? 0}</div>
               <div className="text-xs text-gray-500">Total Sites</div>
             </div>
-            <div className="bg-red-50 rounded-lg p-3 border border-red-100">
-              <div className="text-xl font-bold text-red-600">{summary.n_high ?? 0} <span className="text-sm font-normal">({(summary.pct_high ?? 0).toFixed(0)}%)</span></div>
+            <div className="bg-gray-50 rounded-lg p-3 border border-l-4 border-l-red-500">
+              <div className="text-xl font-bold text-gray-900">{summary.n_high ?? 0} <span className="text-sm font-normal text-gray-500">({(summary.pct_high ?? 0).toFixed(0)}%)</span></div>
               <div className="text-xs text-gray-500">High Risk</div>
             </div>
             {worst_site && (
@@ -55,10 +55,10 @@ export default function RiskAggregation({ data }) {
           </div>
 
           {narrative && (
-            <div className={`text-sm px-3 py-2 rounded border ${
-              (summary.pct_high ?? 0) > 20 ? 'bg-red-50 border-red-200 text-red-700' :
-              (summary.pct_high ?? 0) > 10 ? 'bg-amber-50 border-amber-200 text-amber-700' :
-              'bg-green-50 border-green-200 text-green-700'
+            <div className={`text-sm px-3 py-2 rounded bg-gray-50 border text-gray-700 ${
+              (summary.pct_high ?? 0) > 20 ? 'border-l-4 border-l-red-500' :
+              (summary.pct_high ?? 0) > 10 ? 'border-l-4 border-l-amber-500' :
+              'border-l-4 border-l-gray-300'
             }`}>
               {narrative}
             </div>

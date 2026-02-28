@@ -1,13 +1,13 @@
 const PRIORITY_BADGE = {
-  high: 'bg-red-100 text-red-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low: 'bg-green-100 text-green-700',
+  high: 'border border-gray-200 bg-gray-50 text-gray-700',
+  medium: 'border border-gray-200 bg-gray-50 text-gray-700',
+  low: 'border border-gray-200 bg-gray-50 text-gray-600',
 };
 
-const PRIORITY_ICON = {
-  high: '🔴',
-  medium: '🟡',
-  low: '🟢',
+const PRIORITY_DOT = {
+  high: 'bg-red-500',
+  medium: 'bg-amber-500',
+  low: 'bg-gray-400',
 };
 
 export default function MaintenanceTable({ schedule }) {
@@ -41,8 +41,9 @@ export default function MaintenanceTable({ schedule }) {
                     {s.site_name || s.site_id}
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${PRIORITY_BADGE[p]}`}>
-                      {PRIORITY_ICON[p]} {p.charAt(0).toUpperCase() + p.slice(1)}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${PRIORITY_BADGE[p]}`}>
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[p]}`} />
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
                     </span>
                   </td>
                   <td className="px-2 py-1.5 text-gray-600 max-w-[14rem] truncate" title={s.reason}>

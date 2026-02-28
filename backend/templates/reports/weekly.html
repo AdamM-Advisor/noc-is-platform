@@ -20,35 +20,35 @@
             <td>{{ kpis.total_volume }}</td>
             <td>{{ kpis_prev.total_volume }}</td>
             <td class="{% if deltas.volume_mom_pct > 0 %}delta-down{% elif deltas.volume_mom_pct < 0 %}delta-up{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.volume_mom_pct) }}%</td>
-            <td>{% if deltas.volume_mom_pct <= 0 %}🟢{% elif deltas.volume_mom_pct <= 10 %}🟡{% else %}🔴{% endif %}</td>
+            <td>{% if deltas.volume_mom_pct <= 0 %}<span class="dot dot-good"></span>{% elif deltas.volume_mom_pct <= 10 %}<span class="dot dot-warn"></span>{% else %}<span class="dot dot-bad"></span>{% endif %}</td>
         </tr>
         <tr>
             <td>SLA %</td>
             <td class="{% if kpis.sla_pct >= 90 %}sla-good{% elif kpis.sla_pct >= 85 %}sla-warn{% else %}sla-bad{% endif %}">{{ '%.1f'|format(kpis.sla_pct) }}%</td>
             <td>{{ '%.1f'|format(kpis_prev.sla_pct) }}%</td>
             <td class="{% if deltas.sla_mom_pp > 0 %}delta-up{% elif deltas.sla_mom_pp < 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.sla_mom_pp) }}pp</td>
-            <td>{% if kpis.sla_pct >= 90 %}🟢{% elif kpis.sla_pct >= 85 %}🟡{% else %}🔴{% endif %}</td>
+            <td>{% if kpis.sla_pct >= 90 %}<span class="dot dot-good"></span>{% elif kpis.sla_pct >= 85 %}<span class="dot dot-warn"></span>{% else %}<span class="dot dot-bad"></span>{% endif %}</td>
         </tr>
         <tr>
             <td>MTTR (menit)</td>
             <td>{{ '%.0f'|format(kpis.avg_mttr_min) }}</td>
             <td>{{ '%.0f'|format(kpis_prev.avg_mttr_min) }}</td>
             <td class="{% if deltas.mttr_mom_pct < 0 %}delta-up{% elif deltas.mttr_mom_pct > 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.mttr_mom_pct) }}%</td>
-            <td>{% if kpis.avg_mttr_min <= 240 %}🟢{% elif kpis.avg_mttr_min <= 480 %}🟡{% else %}🔴{% endif %}</td>
+            <td>{% if kpis.avg_mttr_min <= 240 %}<span class="dot dot-good"></span>{% elif kpis.avg_mttr_min <= 480 %}<span class="dot dot-warn"></span>{% else %}<span class="dot dot-bad"></span>{% endif %}</td>
         </tr>
         <tr>
             <td>Eskalasi %</td>
             <td>{{ '%.1f'|format(kpis.escalation_pct) }}%</td>
             <td>{{ '%.1f'|format(kpis_prev.escalation_pct) }}%</td>
             <td class="{% if deltas.esc_mom_pp < 0 %}delta-up{% elif deltas.esc_mom_pp > 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.esc_mom_pp) }}pp</td>
-            <td>{% if kpis.escalation_pct <= 3 %}🟢{% elif kpis.escalation_pct <= 7 %}🟡{% else %}🔴{% endif %}</td>
+            <td>{% if kpis.escalation_pct <= 3 %}<span class="dot dot-good"></span>{% elif kpis.escalation_pct <= 7 %}<span class="dot dot-warn"></span>{% else %}<span class="dot dot-bad"></span>{% endif %}</td>
         </tr>
         <tr>
             <td>Auto-Resolve %</td>
             <td>{{ '%.1f'|format(kpis.auto_resolve_pct) }}%</td>
             <td>{{ '%.1f'|format(kpis_prev.auto_resolve_pct) }}%</td>
             <td class="{% if deltas.auto_mom_pp > 0 %}delta-up{% elif deltas.auto_mom_pp < 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.auto_mom_pp) }}pp</td>
-            <td>{% if kpis.auto_resolve_pct >= 60 %}🟢{% elif kpis.auto_resolve_pct >= 40 %}🟡{% else %}🔴{% endif %}</td>
+            <td>{% if kpis.auto_resolve_pct >= 60 %}<span class="dot dot-good"></span>{% elif kpis.auto_resolve_pct >= 40 %}<span class="dot dot-warn"></span>{% else %}<span class="dot dot-bad"></span>{% endif %}</td>
         </tr>
     </tbody>
 </table>
@@ -89,9 +89,9 @@
 <div class="section-title">5. Rekomendasi Minggu Depan</div>
 {% for rec in recommendations[:5] %}
 <div class="recommendation recommendation-{{ rec.priority_class }}">
-    <strong>{{ rec.priority_icon }} {{ rec.title }}</strong><br>
+    <strong>{{ rec.priority_label }} — {{ rec.title }}</strong><br>
     {{ rec.message }}<br>
-    {% if rec.action %}<span style="color:#1e40af;">&#9654; AKSI: {{ rec.action }}</span>{% endif %}
+    {% if rec.action %}<span style="color:#1e40af;">AKSI: {{ rec.action }}</span>{% endif %}
 </div>
 {% endfor %}
 {% endif %}

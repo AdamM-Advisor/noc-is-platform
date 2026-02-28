@@ -52,14 +52,14 @@ export default function VolumeForecast({ data }) {
     return rows;
   }, [data]);
 
-  const trendColor = data.pct_change > 5 ? '#DC2626' : data.pct_change < -5 ? '#16A34A' : '#6B7280';
-  const trendIcon = data.pct_change > 5 ? '▲' : data.pct_change < -5 ? '▼' : '→';
+  const trendColor = data.pct_change > 5 ? '#DC2626' : data.pct_change < -5 ? '#475569' : '#6B7280';
+  const trendLabel = data.pct_change > 5 ? 'Naik' : data.pct_change < -5 ? 'Turun' : 'Stabil';
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4 flex-wrap">
         <span className="text-sm text-gray-600">
-          Trend: <span className="font-semibold" style={{ color: trendColor }}>{trendIcon} {data.trend_word}</span>
+          Trend: <span className="font-semibold" style={{ color: trendColor }}>{trendLabel} — {data.trend_word}</span>
           <span className="text-gray-400 ml-1">({data.pct_change > 0 ? '+' : ''}{data.pct_change?.toFixed(1)}%)</span>
         </span>
       </div>

@@ -1,4 +1,5 @@
 import { Pin, PinOff, Eye, GitCompare, Pencil, Trash2, Clock, MapPin } from 'lucide-react';
+import StatusDot from '../ui/StatusDot';
 import DeltaBadge from './DeltaBadge';
 
 const KPI_LABELS = {
@@ -19,14 +20,13 @@ const KPI_UNITS = {
   repeat: '%',
 };
 
-const behaviorColors = {
-  CHRONIC: 'bg-red-100 text-red-800',
-  DETERIORATING: 'bg-orange-100 text-orange-800',
-  SPORADIC: 'bg-amber-100 text-amber-800',
-  SEASONAL: 'bg-yellow-100 text-yellow-800',
-  IMPROVING: 'bg-blue-100 text-blue-800',
-  HEALTHY: 'bg-green-100 text-green-800',
-};
+function mapBehaviorToStatus(behavior) {
+  if (!behavior) return 'neutral';
+  const b = behavior.toUpperCase();
+  if (b === 'CHRONIC' || b === 'DETERIORATING') return 'critical';
+  if (b === 'SPORADIC' || b === 'SEASONAL') return 'warning';
+  return 'neutral';
+}
 
 export default function SavedViewCard({ view, onOpen, onCompare, onEdit, onDelete, onPin }) {
   const deltas = view.deltas || {};
@@ -47,15 +47,16 @@ export default function SavedViewCard({ view, onOpen, onCompare, onEdit, onDelet
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             {view.is_pinned && <Pin size={14} className="text-blue-500 shrink-0" />}
-            <h3 className="font-semibold text-gray-800 truncate">{view.name}</h3>
+            <h3 className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{view.name}</h3>
           </div>
           {view.description && (
-            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{view.description}</p>
+            <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{view.description}</p>
           )}
         </div>
         <button
           onClick={() => onPin(view.id)}
-          className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-500 shrink-0"
+          className="p-1 hover:bg-gray-100 rounded shrink-0"
+          style={{ color: 'var(--text-muted)' }}
           title={view.is_pinned ? 'Unpin' : 'Pin'}
         >
           {view.is_pinned ? <PinOff size={16} /> : <Pin size={16} />}
@@ -63,17 +64,27 @@ export default function SavedViewCard({ view, onOpen, onCompare, onEdit, onDelet
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+          style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+        >
           <MapPin size={10} />
           {view.entity_level?.toUpperCase()}: {view.entity_name || view.entity_id}
         </span>
         {view.snapshot_behavior && (
-          <span className={`px-2 py-0.5 rounded text-xs font-medium ${behaviorColors[view.snapshot_behavior] || 'bg-gray-100 text-gray-600'}`}>
+          <span
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium"
+            style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+          >
+            <StatusDot status={mapBehaviorToStatus(view.snapshot_behavior)} size={6} />
             {view.snapshot_behavior}
           </span>
         )}
         {view.date_from && view.date_to && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-50 text-gray-600">
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+            style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
+          >
             <Clock size={10} />
             {view.date_from} — {view.date_to}
           </span>
@@ -81,10 +92,10 @@ export default function SavedViewCard({ view, onOpen, onCompare, onEdit, onDelet
       </div>
 
       {hasDeltas && (
-        <div className="grid grid-cols-3 gap-2 mb-3 p-2 bg-gray-50 rounded-lg">
+        <div className="grid grid-cols-3 gap-2 mb-3 p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}>
           {Object.entries(deltas).map(([kpi, d]) => (
             <div key={kpi} className="text-center">
-              <div className="text-[10px] text-gray-500 uppercase">{KPI_LABELS[kpi] || kpi}</div>
+              <div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>{KPI_LABELS[kpi] || kpi}</div>
               <DeltaBadge delta={d.delta} quality={d.quality} unit={KPI_UNITS[kpi] || ''} />
             </div>
           ))}
@@ -92,38 +103,38 @@ export default function SavedViewCard({ view, onOpen, onCompare, onEdit, onDelet
       )}
 
       {!hasDeltas && view.snapshot_sla !== null && view.snapshot_sla !== undefined && (
-        <div className="grid grid-cols-3 gap-2 mb-3 p-2 bg-gray-50 rounded-lg text-center">
+        <div className="grid grid-cols-3 gap-2 mb-3 p-2 rounded-lg text-center" style={{ backgroundColor: 'var(--bg-secondary)' }}>
           <div>
-            <div className="text-[10px] text-gray-500 uppercase">SLA</div>
-            <div className="text-sm font-semibold">{view.snapshot_sla?.toFixed(1)}%</div>
+            <div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>SLA</div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{view.snapshot_sla?.toFixed(1)}%</div>
           </div>
           <div>
-            <div className="text-[10px] text-gray-500 uppercase">MTTR</div>
-            <div className="text-sm font-semibold">{Math.round(view.snapshot_mttr || 0)} min</div>
+            <div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>MTTR</div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{Math.round(view.snapshot_mttr || 0)} min</div>
           </div>
           <div>
-            <div className="text-[10px] text-gray-500 uppercase">Volume</div>
-            <div className="text-sm font-semibold">{view.snapshot_volume || 0}</div>
+            <div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Volume</div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{view.snapshot_volume || 0}</div>
           </div>
         </div>
       )}
 
       <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-        <div className="text-[10px] text-gray-400">
+        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
           {view.last_accessed_at ? `Terakhir dibuka: ${formatDate(view.last_accessed_at)}` : `Dibuat: ${formatDate(view.created_at)}`}
           {view.access_count > 0 && ` · ${view.access_count}x`}
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => onOpen(view)} className="p-1.5 hover:bg-blue-50 rounded text-blue-600" title="Buka">
+          <button onClick={() => onOpen(view)} className="p-1.5 hover:bg-gray-100 rounded" style={{ color: 'var(--accent-brand)' }} title="Buka">
             <Eye size={14} />
           </button>
-          <button onClick={() => onCompare(view)} className="p-1.5 hover:bg-purple-50 rounded text-purple-600" title="Compare">
+          <button onClick={() => onCompare(view)} className="p-1.5 hover:bg-gray-100 rounded" style={{ color: 'var(--text-secondary)' }} title="Compare">
             <GitCompare size={14} />
           </button>
-          <button onClick={() => onEdit(view)} className="p-1.5 hover:bg-gray-100 rounded text-gray-500" title="Edit">
+          <button onClick={() => onEdit(view)} className="p-1.5 hover:bg-gray-100 rounded" style={{ color: 'var(--text-muted)' }} title="Edit">
             <Pencil size={14} />
           </button>
-          <button onClick={() => onDelete(view.id)} className="p-1.5 hover:bg-red-50 rounded text-red-500" title="Delete">
+          <button onClick={() => onDelete(view.id)} className="p-1.5 hover:bg-gray-100 rounded" style={{ color: 'var(--status-critical-dot)' }} title="Delete">
             <Trash2 size={14} />
           </button>
         </div>

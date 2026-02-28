@@ -55,11 +55,11 @@ def linear_regression_slope(x, y):
 
 def classify_risk(score):
     if score >= 70:
-        return {"level": "HIGH", "color": "#DC2626", "icon": "🔴"}
+        return {"level": "HIGH", "color": "#DC2626", "icon": ""}
     elif score >= 40:
-        return {"level": "MEDIUM", "color": "#D97706", "icon": "🟡"}
+        return {"level": "MEDIUM", "color": "#D97706", "icon": ""}
     else:
-        return {"level": "LOW", "color": "#16A34A", "icon": "🟢"}
+        return {"level": "LOW", "color": "#16A34A", "icon": ""}
 
 
 def interpret_risk(score, components):
@@ -253,12 +253,12 @@ def interpret_risk_aggregation(n_high, n_medium, n_low, total, worst):
     parts = []
     if pct_high > 20:
         parts.append(
-            f"🔴 {n_high} dari {total} site ({pct_high:.0f}%) berisiko tinggi. "
+            f" {n_high} dari {total} site ({pct_high:.0f}%) berisiko tinggi. "
             f"Masalah bersifat sistemik — diperlukan program perbaikan menyeluruh."
         )
     elif pct_high > 10:
         parts.append(
-            f"⚠️ Proporsi site berisiko tinggi ({pct_high:.0f}%) di atas 10%. "
+            f" Proporsi site berisiko tinggi ({pct_high:.0f}%) di atas 10%. "
             f"Program maintenance intensif diperlukan."
         )
     elif pct_high > 0:
@@ -267,11 +267,11 @@ def interpret_risk_aggregation(n_high, n_medium, n_low, total, worst):
             f"Fokus PM pada site-site ini."
         )
     else:
-        parts.append("✅ Tidak ada site berisiko tinggi.")
+        parts.append(" Tidak ada site berisiko tinggi.")
 
     if worst and worst.get("score", 0) > 85:
         parts.append(
-            f"🔴 {worst['name']} memiliki risk score {worst['score']} — sangat kritis."
+            f" {worst['name']} memiliki risk score {worst['score']} — sangat kritis."
         )
 
     return {"narrative": " ".join(parts)}
@@ -369,20 +369,20 @@ def predict_sla_breach(sla_data, target, horizon_weeks=8):
                 break
         status = "already_breached"
         narrative = (
-            f"🔴 SLA SUDAH di bawah target ({current:.1f}% vs {target}%). "
+            f" SLA SUDAH di bawah target ({current:.1f}% vs {target}%). "
             f"Breach dimulai ~{weeks_ago} periode lalu."
         )
     elif breach_week is not None:
         status = "breach_predicted"
         narrative = (
-            f"⚠️ SLA saat ini {current:.1f}% (memenuhi target {target}%), "
+            f" SLA saat ini {current:.1f}% (memenuhi target {target}%), "
             f"namun tren menunjukkan BREACH dalam ~{breach_week} minggu "
             f"jika tidak ada intervensi."
         )
     else:
         status = "safe"
         narrative = (
-            f"✅ SLA {current:.1f}% diprediksi tetap di atas target "
+            f" SLA {current:.1f}% diprediksi tetap di atas target "
             f"dalam {horizon_weeks} minggu ke depan."
         )
 

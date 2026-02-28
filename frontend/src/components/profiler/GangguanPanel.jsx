@@ -235,7 +235,7 @@ function DistributionBars({ children, faultName, childLabel, onDrillDown }) {
               exp: {child.expected_pct}%
             </span>
             {child.is_over && (
-              <span className="text-orange-500 text-xs" title={`Over-representation: +${child.diff_pp}pp`}>⚠️</span>
+              <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--status-warning-dot)' }} title={`Over-representation: +${child.diff_pp}pp`} />
             )}
           </div>
         );
@@ -273,12 +273,9 @@ function RepeatPatternsTable({ patterns, faultName }) {
                 <td className="px-2 py-1.5 text-right text-gray-600">{p.ticket_count}</td>
                 <td className="px-2 py-1.5 text-right text-gray-600">avg {p.avg_gap_days} hari</td>
                 <td className="px-2 py-1.5 text-center">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                    p.pattern === 'Regular' ? 'bg-red-100 text-red-700' :
-                    p.pattern === 'Semi-regular' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-600'
-                  }`}>
-                    {p.pattern_icon} {p.pattern}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.pattern === 'Regular' ? 'var(--status-critical-dot)' : p.pattern === 'Semi-regular' ? 'var(--status-warning-dot)' : 'var(--status-neutral-dot)' }} />
+                    {p.pattern}
                   </span>
                 </td>
               </tr>
@@ -298,10 +295,16 @@ function FaultRecommendations({ recs }) {
       <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Rekomendasi</p>
       <div className="space-y-1.5">
         {recs.map((r, i) => (
-          <div key={i} className={`text-sm px-3 py-2 rounded border ${
-            r.priority === 'critical' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'
-          }`}>
-            {r.icon} {i + 1}. {r.text}
+          <div
+            key={i}
+            className="text-sm px-3 py-2 rounded-r border"
+            style={{
+              borderLeft: `3px solid ${r.priority === 'critical' ? 'var(--status-critical-dot)' : 'var(--status-warning-dot)'}`,
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {i + 1}. {r.text}
           </div>
         ))}
       </div>
@@ -329,21 +332,25 @@ function CrossDimensionOverviewCards({ overview }) {
     },
   ];
 
-  const colorMap = {
-    blue: 'bg-blue-50 border-blue-200',
-    red: 'bg-red-50 border-red-200',
-    yellow: 'bg-yellow-50 border-yellow-200',
-    green: 'bg-green-50 border-green-200',
-    gray: 'bg-gray-50 border-gray-200',
+  const dotColorMap = {
+    blue: 'var(--accent-brand)',
+    red: 'var(--status-critical-dot)',
+    yellow: 'var(--status-warning-dot)',
+    green: 'var(--status-good-dot)',
+    gray: 'var(--status-neutral-dot)',
   };
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {cards.map((c, i) => (
-        <div key={i} className={`rounded-lg border p-3 ${colorMap[c.color]}`}>
-          <div className="text-xl font-bold text-gray-900">{c.value}</div>
-          <div className="text-xs text-gray-500 mt-0.5">{c.label}</div>
-          {c.sub && <div className="text-[10px] text-gray-400 mt-0.5">{c.sub}</div>}
+        <div
+          key={i}
+          className="rounded-lg border border-gray-200 p-3"
+          style={{ borderLeftWidth: '3px', borderLeftColor: dotColorMap[c.color] || dotColorMap.gray, backgroundColor: 'var(--bg-secondary)' }}
+        >
+          <div className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{c.value}</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{c.label}</div>
+          {c.sub && <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{c.sub}</div>}
         </div>
       ))}
     </div>
@@ -381,12 +388,9 @@ function TopSitesTable({ data, faultName }) {
                 <td className="px-2 py-1.5 text-right text-gray-600">{Math.round(s.avg_mttr_min)}</td>
                 <td className="px-2 py-1.5 text-right text-gray-600">{s.avg_gap_days > 0 ? `avg ${s.avg_gap_days}` : '—'}</td>
                 <td className="px-2 py-1.5 text-center">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                    s.pattern === 'Regular' ? 'bg-red-100 text-red-700' :
-                    s.pattern === 'Semi-regular' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-600'
-                  }`}>
-                    {s.pattern_icon} {s.pattern}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.pattern === 'Regular' ? 'var(--status-critical-dot)' : s.pattern === 'Semi-regular' ? 'var(--status-warning-dot)' : 'var(--status-neutral-dot)' }} />
+                    {s.pattern}
                   </span>
                 </td>
               </tr>

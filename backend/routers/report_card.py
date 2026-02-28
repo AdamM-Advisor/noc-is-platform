@@ -172,7 +172,7 @@ async def generate_report_card(req: ReportCardRequest):
                         c_hist = _get_entity_history(conn, c_col, cr[0], recent)
                         c_trend = _compute_sla_trend(c_hist)
                         c_status = determine_entity_status(c_sla, sla_target, c_trend["sla_quality"])
-                        trend_icon = "📉" if c_trend["sla_quality"] == "worsening" else ("📈" if c_trend["sla_quality"] == "improving" else "─")
+                        trend_icon = "down" if c_trend["sla_quality"] == "worsening" else ("up" if c_trend["sla_quality"] == "improving" else "")
                         children.append({
                             "id": cr[0], "name": cr[1] or cr[0],
                             "sla_pct": round(c_sla, 1),
@@ -225,11 +225,11 @@ async def generate_report_card(req: ReportCardRequest):
         )
         for r in recs:
             r["priority_info"] = {
-                "SEGERA": {"label": "SEGERA", "icon": "🔴", "color": "#DC2626"},
-                "MINGGU_INI": {"label": "MINGGU INI", "icon": "🟡", "color": "#D97706"},
-                "BULAN_INI": {"label": "BULAN INI", "icon": "🔵", "color": "#2563EB"},
-                "RUTIN": {"label": "RUTIN", "icon": "🟢", "color": "#16A34A"},
-            }.get(r["priority"], {"label": r["priority"], "icon": "⚪", "color": "#6B7280"})
+                "SEGERA": {"label": "SEGERA", "icon": "", "color": "#DC2626"},
+                "MINGGU_INI": {"label": "MINGGU INI", "icon": "", "color": "#D97706"},
+                "BULAN_INI": {"label": "BULAN INI", "icon": "", "color": "#2563EB"},
+                "RUTIN": {"label": "RUTIN", "icon": "", "color": "#16A34A"},
+            }.get(r["priority"], {"label": r["priority"], "icon": "", "color": "#6B7280"})
 
     return {
         "entity": entity_info,

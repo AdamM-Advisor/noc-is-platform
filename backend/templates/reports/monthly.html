@@ -105,10 +105,10 @@
 <div class="section-title">7. Rekomendasi</div>
 {% for rec in recommendations[:5] %}
 <div class="recommendation recommendation-{{ rec.priority_class }}">
-    <strong>{{ rec.priority_icon }} {{ rec.title }}</strong><br>
+    <strong>{{ rec.priority_label }} — {{ rec.title }}</strong><br>
     {{ rec.message }}<br>
-    {% if rec.action %}<span style="color:#1e40af;">&#9654; AKSI: {{ rec.action }}</span>{% endif %}
-    {% if rec.impact %}<br><span style="color:#6B7280;">&#128202; Impact: {{ rec.impact }}</span>{% endif %}
+    {% if rec.action %}<span style="color:#1e40af;">AKSI: {{ rec.action }}</span>{% endif %}
+    {% if rec.impact %}<br><span style="color:#6B7280;">Impact: {{ rec.impact }}</span>{% endif %}
 </div>
 {% endfor %}
 {% endif %}

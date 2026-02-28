@@ -1,4 +1,10 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import StatusDot from '../ui/StatusDot';
+
+function mapQualityToStatus(quality) {
+  if (quality === 'worsening') return 'critical';
+  if (quality === 'improving') return 'neutral';
+  return 'neutral';
+}
 
 export default function ChildDeltaTable({ childrenDelta, profileA, profileB }) {
   if (!childrenDelta || childrenDelta.length === 0) return null;
@@ -11,8 +17,16 @@ export default function ChildDeltaTable({ childrenDelta, profileA, profileB }) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Perbandingan Child Entity</h3>
         <div className="flex items-center gap-3 text-xs">
-          {improving > 0 && <span className="text-green-600">✅ {improving} membaik</span>}
-          {worsening > 0 && <span className="text-red-600">❌ {worsening} memburuk</span>}
+          {improving > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-gray-600">
+              <StatusDot status="good" size={6} /> {improving} membaik
+            </span>
+          )}
+          {worsening > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-gray-600">
+              <StatusDot status="critical" size={6} /> {worsening} memburuk
+            </span>
+          )}
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -20,33 +34,31 @@ export default function ChildDeltaTable({ childrenDelta, profileA, profileB }) {
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left py-2 px-3 text-gray-500 font-medium">Entity</th>
-              <th className="text-center py-2 px-3 text-blue-600 font-medium">SLA A</th>
-              <th className="text-center py-2 px-3 text-emerald-600 font-medium">SLA B</th>
+              <th className="text-center py-2 px-3 text-gray-500 font-medium">SLA A</th>
+              <th className="text-center py-2 px-3 text-gray-500 font-medium">SLA B</th>
               <th className="text-center py-2 px-3 text-gray-500 font-medium">Delta</th>
-              <th className="text-center py-2 px-3 text-blue-600 font-medium">MTTR A</th>
-              <th className="text-center py-2 px-3 text-emerald-600 font-medium">MTTR B</th>
+              <th className="text-center py-2 px-3 text-gray-500 font-medium">MTTR A</th>
+              <th className="text-center py-2 px-3 text-gray-500 font-medium">MTTR B</th>
               <th className="text-center py-2 px-3 text-gray-500 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {childrenDelta.map(child => {
-              const Icon = child.quality === 'improving' ? TrendingUp : child.quality === 'worsening' ? TrendingDown : Minus;
-              const iconColor = child.quality === 'improving' ? 'text-green-500' : child.quality === 'worsening' ? 'text-red-500' : 'text-gray-400';
-              const deltaColor = child.quality === 'improving' ? 'text-green-600' : child.quality === 'worsening' ? 'text-red-600' : 'text-gray-500';
-              const rowBg = child.quality === 'worsening' ? 'bg-red-50/50' : child.quality === 'improving' ? 'bg-green-50/50' : '';
+              const statusLevel = mapQualityToStatus(child.quality);
+              const deltaText = `${child.delta > 0 ? '+' : ''}${child.delta?.toFixed(1)}pp`;
 
               return (
-                <tr key={child.id} className={`border-b last:border-0 hover:bg-gray-50 ${rowBg}`}>
+                <tr key={child.id} className="border-b last:border-0 hover:bg-gray-50">
                   <td className="py-2 px-3 font-medium text-gray-700">{child.name}</td>
-                  <td className="py-2 px-3 text-center text-blue-700">{child.sla_a?.toFixed(1)}%</td>
-                  <td className="py-2 px-3 text-center text-emerald-700">{child.sla_b?.toFixed(1)}%</td>
-                  <td className={`py-2 px-3 text-center font-semibold ${deltaColor}`}>
-                    {child.delta > 0 ? '+' : ''}{child.delta?.toFixed(1)}pp
+                  <td className="py-2 px-3 text-center" style={{ color: 'var(--text-primary)' }}>{child.sla_a?.toFixed(1)}%</td>
+                  <td className="py-2 px-3 text-center" style={{ color: 'var(--text-primary)' }}>{child.sla_b?.toFixed(1)}%</td>
+                  <td className="py-2 px-3 text-center font-medium" style={{ color: 'var(--text-secondary)' }}>
+                    {deltaText}
                   </td>
-                  <td className="py-2 px-3 text-center text-blue-700">{Math.round(child.mttr_a || 0)}</td>
-                  <td className="py-2 px-3 text-center text-emerald-700">{Math.round(child.mttr_b || 0)}</td>
+                  <td className="py-2 px-3 text-center" style={{ color: 'var(--text-primary)' }}>{Math.round(child.mttr_a || 0)}</td>
+                  <td className="py-2 px-3 text-center" style={{ color: 'var(--text-primary)' }}>{Math.round(child.mttr_b || 0)}</td>
                   <td className="py-2 px-3 text-center">
-                    <Icon size={16} className={`inline ${iconColor}`} />
+                    <StatusDot status={statusLevel} />
                   </td>
                 </tr>
               );

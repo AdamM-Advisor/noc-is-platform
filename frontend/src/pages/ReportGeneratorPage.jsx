@@ -74,10 +74,10 @@ function ReportGeneratorPage() {
       <ReportForm onGenerate={handleGenerate} loading={loading} />
 
       {result && (
-        <div className={`rounded-lg p-4 ${result.status === 'completed' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+        <div className={`rounded-lg p-4 border ${result.status === 'completed' ? 'bg-white border-l-4 border-l-gray-400 border-gray-200' : 'bg-white border-l-4 border-l-red-400 border-gray-200'}`}>
           {result.status === 'completed' ? (
             <div className="space-y-2">
-              <p className="text-green-700 font-medium">Laporan berhasil di-generate ({(result.generation_time_ms / 1000).toFixed(1)}s)</p>
+              <p className="text-gray-700 font-medium">Laporan berhasil di-generate ({(result.generation_time_ms / 1000).toFixed(1)}s)</p>
               <div className="flex gap-3">
                 {result.pdf_url && (
                   <a href={result.pdf_url} target="_blank" rel="noopener noreferrer"
@@ -94,7 +94,7 @@ function ReportGeneratorPage() {
               </div>
             </div>
           ) : (
-            <p className="text-red-700">Gagal: {result.error || 'Unknown error'}</p>
+            <p className="text-gray-700">Gagal: {result.error || 'Unknown error'}</p>
           )}
         </div>
       )}

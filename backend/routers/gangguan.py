@@ -107,13 +107,13 @@ def _interpret_severity_mix(counts):
 
     if crit_pct > 10:
         parts.append(
-            f"⚠️ Proporsi Critical {crit_pct:.0f}% di atas 10%. "
+            f" Proporsi Critical {crit_pct:.0f}% di atas 10%. "
             f"Perlu investigasi apakah ada masalah sistemik."
         )
 
     if high_pct > 30:
         parts.append(
-            f"🔴 Lebih dari 30% tiket berseverity tinggi (Critical+Major = {high_pct:.0f}%). "
+            f" Lebih dari 30% tiket berseverity tinggi (Critical+Major = {high_pct:.0f}%). "
             f"Kualitas jaringan perlu evaluasi menyeluruh."
         )
     elif high_pct <= 20:
@@ -150,7 +150,7 @@ def _interpret_fault_pareto(items):
     top1_pct = items[0]["count"] / total * 100
     if top1_pct > 40:
         parts.append(
-            f"⚠️ {items[0]['name']} sangat dominan ({top1_pct:.0f}%). "
+            f" {items[0]['name']} sangat dominan ({top1_pct:.0f}%). "
             f"Fokus prioritas pada gangguan ini."
         )
 
@@ -496,10 +496,10 @@ async def gangguan_cross_dimension(
                 cv = std_gap / avg_gap if avg_gap > 0 else 999
                 if cv < 0.3:
                     pattern = "Regular"
-                    pattern_icon = "🔴"
+                    pattern_icon = ""
                 elif cv < 0.6:
                     pattern = "Semi-regular"
-                    pattern_icon = "🟡"
+                    pattern_icon = ""
                 else:
                     pattern = "Irregular"
                     pattern_icon = "─"
@@ -694,9 +694,9 @@ async def gangguan_top_sites(
                 avg_gap, cv = 0, 999
 
             if cv < 0.3:
-                pattern, pattern_icon = "Regular", "🔴"
+                pattern, pattern_icon = "Regular", ""
             elif cv < 0.6:
-                pattern, pattern_icon = "Semi-regular", "🟡"
+                pattern, pattern_icon = "Semi-regular", ""
             else:
                 pattern, pattern_icon = "Irregular", "─"
 
@@ -731,7 +731,7 @@ def _generate_fault_recommendations(fault_name, entity_name, sla_delta, pct_of_t
         if site.get("pattern") in ("Regular", "Semi-regular"):
             recs.append({
                 "priority": "critical",
-                "icon": "🔴",
+                "icon": "",
                 "text": (
                     f"RCA mendalam untuk site {site['site_name']} "
                     f"({site['ticket_count']} {fault_name}, pola {site['avg_gap_days']:.0f}-hari)"
@@ -742,7 +742,7 @@ def _generate_fault_recommendations(fault_name, entity_name, sla_delta, pct_of_t
         if child.get("is_over") and child.get("diff_pp", 0) > 5:
             recs.append({
                 "priority": "warning",
-                "icon": "🟡",
+                "icon": "",
                 "text": (
                     f"Review {fault_name} di {child['entity_name']} "
                     f"(over-representation {child['diff_pp']:.0f}pp)"
@@ -752,7 +752,7 @@ def _generate_fault_recommendations(fault_name, entity_name, sla_delta, pct_of_t
     if sla_delta < -3:
         recs.append({
             "priority": "critical",
-            "icon": "🔴",
+            "icon": "",
             "text": (
                 f"{fault_name} menurunkan SLA {abs(sla_delta):.1f}pp. "
                 f"Perbaikan {fault_name} = perbaikan SLA terbesar."
@@ -762,7 +762,7 @@ def _generate_fault_recommendations(fault_name, entity_name, sla_delta, pct_of_t
     if pct_of_total > 40:
         recs.append({
             "priority": "warning",
-            "icon": "🟡",
+            "icon": "",
             "text": (
                 f"{fault_name} menyumbang {pct_of_total:.0f}% total tiket. "
                 f"Fokus utama operasional harus pada gangguan ini."

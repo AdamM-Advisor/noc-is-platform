@@ -116,7 +116,7 @@ def calculate_deltas(kpis_a, kpis_b):
             "delta": round(diff, 2),
             "pct_change": round(pct_change, 1),
             "quality": quality,
-            "icon": "✅" if quality == "improving" else ("❌" if quality == "worsening" else "─"),
+            "icon": "",
         }
     return deltas
 
@@ -199,7 +199,7 @@ def get_children_delta(conn, entity_level, entity_id_a, entity_id_b,
             "mttr_b": cb.get("mttr", 0),
             "delta": delta,
             "quality": quality,
-            "icon": "✅" if quality == "improving" else ("❌" if quality == "worsening" else "─"),
+            "icon": "",
         })
     result.sort(key=lambda x: x["delta"])
     return result

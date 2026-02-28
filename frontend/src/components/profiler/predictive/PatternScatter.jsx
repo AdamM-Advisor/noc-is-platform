@@ -68,7 +68,7 @@ export default function PatternScatter({ data, consistentSites }) {
             <div key={i} className="text-xs text-gray-600">
               • <span className="font-medium">{s.site_name || s.site_id}</span>: setiap ~{s.avg_gap_days?.toFixed(0)} hari
               <span className="text-gray-400"> (CV {s.cv?.toFixed(2)})</span>
-              {s.predicted_next && <span className="text-blue-600 ml-1">→ next: {s.predicted_next}</span>}
+              {s.predicted_next && <span className="text-gray-500 ml-1">next: {s.predicted_next}</span>}
             </div>
           ))}
         </div>
