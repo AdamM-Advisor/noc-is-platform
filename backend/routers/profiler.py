@@ -1,3 +1,5 @@
+import math
+from statistics import mean as stat_mean, stdev as stat_stdev
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from typing import Optional, List
@@ -751,4 +753,589 @@ async def get_filter_options():
         "severities": [s[0] for s in severities],
         "types": [t[0] for t in types],
         "fault_levels": [f[0] for f in fault_levels],
+    }
+
+
+POSITIVE_UP_KPIS = {"sla_pct", "auto_resolve_pct"}
+TREND_THRESHOLDS = {
+    "sla_pct": 0.5,
+    "avg_mttr_min": 30,
+    "total_tickets": 5,
+    "escalation_pct": 0.5,
+    "auto_resolve_pct": 0.5,
+    "repeat_pct": 0.5,
+}
+
+KPI_LABELS_ID = {
+    "sla_pct": "SLA",
+    "avg_mttr_min": "MTTR",
+    "total_tickets": "Volume",
+    "escalation_pct": "Eskalasi",
+    "auto_resolve_pct": "Auto-resolve",
+    "repeat_pct": "Repeat",
+}
+
+MONTH_NAMES = {
+    "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr",
+    "05": "Mei", "06": "Jun", "07": "Jul", "08": "Agu",
+    "09": "Sep", "10": "Okt", "11": "Nov", "12": "Des",
+}
+
+KPI_EXPR_MAP_TREND = {
+    "sla_pct": "CASE WHEN SUM(total_tickets) > 0 THEN SUM(total_sla_met) * 100.0 / SUM(total_tickets) ELSE 0 END",
+    "avg_mttr_min": "AVG(avg_mttr_min)",
+    "total_tickets": "SUM(total_tickets)",
+    "escalation_pct": "CASE WHEN SUM(total_tickets) > 0 THEN SUM(total_escalated) * 100.0 / SUM(total_tickets) ELSE 0 END",
+    "auto_resolve_pct": "CASE WHEN SUM(total_tickets) > 0 THEN SUM(total_auto_resolved) * 100.0 / SUM(total_tickets) ELSE 0 END",
+    "repeat_pct": "CASE WHEN SUM(total_tickets) > 0 THEN SUM(total_repeat) * 100.0 / SUM(total_tickets) ELSE 0 END",
+}
+
+
+def _linear_regression(values):
+    n = len(values)
+    if n < 2:
+        return 0.0, values[0] if values else 0.0
+    x_mean = (n - 1) / 2.0
+    y_mean = stat_mean(values)
+    num = sum((i - x_mean) * (v - y_mean) for i, v in enumerate(values))
+    den = sum((i - x_mean) ** 2 for i in range(n))
+    slope = num / den if den != 0 else 0.0
+    intercept = y_mean - slope * x_mean
+    return slope, intercept
+
+
+def _classify_trend_direction(kpi_name, slope, period_label="bulan"):
+    thr = TREND_THRESHOLDS.get(kpi_name, 0.5)
+    positive_up = kpi_name in POSITIVE_UP_KPIS
+    kpi_label = KPI_LABELS_ID.get(kpi_name, kpi_name)
+
+    if abs(slope) <= thr:
+        return {
+            "direction": "stable", "icon": "─", "quality": "neutral",
+            "narrative": f"Tren {kpi_label} stabil (perubahan < ±{thr}/{period_label})"
+        }
+
+    if slope > 0:
+        if positive_up:
+            return {
+                "direction": "up", "icon": "📈", "quality": "improving",
+                "narrative": f"Tren {kpi_label} naik (membaik) {slope:.1f}/{period_label}"
+            }
+        else:
+            return {
+                "direction": "up", "icon": "📈", "quality": "worsening",
+                "narrative": f"Tren {kpi_label} naik (memburuk) {slope:.1f}/{period_label}"
+            }
+    else:
+        if positive_up:
+            return {
+                "direction": "down", "icon": "📉", "quality": "worsening",
+                "narrative": f"Tren {kpi_label} turun (memburuk) {abs(slope):.1f}/{period_label}"
+            }
+        else:
+            return {
+                "direction": "down", "icon": "📉", "quality": "improving",
+                "narrative": f"Tren {kpi_label} turun (membaik) {abs(slope):.1f}/{period_label}"
+            }
+
+
+def _detect_anomalies(data_points, kpi_name):
+    values = [d["value"] for d in data_points]
+    if len(values) < 3:
+        return []
+    mean_val = stat_mean(values)
+    std_val = stat_stdev(values) if len(values) > 2 else 0
+    if std_val == 0:
+        return []
+
+    anomalies = []
+    kpi_label = KPI_LABELS_ID.get(kpi_name, kpi_name)
+    for dp in data_points:
+        z = (dp["value"] - mean_val) / std_val
+        if abs(z) > 2:
+            direction = "di atas" if z > 0 else "di bawah"
+            sev = "significant" if abs(z) > 3 else "moderate"
+            if abs(z) > 3:
+                narr = (
+                    f"🔴 ANOMALI SIGNIFIKAN pada {dp['period']}: "
+                    f"{kpi_label} = {dp['value']:.1f} ({abs(z):.1f}σ {direction} rata-rata "
+                    f"{mean_val:.1f} ± {std_val:.1f}). Investigasi penyebab diperlukan."
+                )
+            else:
+                narr = (
+                    f"⚡ Anomali pada {dp['period']}: {kpi_label} = {dp['value']:.1f} "
+                    f"(z-score: {z:.1f}). Rata-rata historis: {mean_val:.1f} ± {std_val:.1f}."
+                )
+            anomalies.append({
+                "period": dp["period"],
+                "value": dp["value"],
+                "z_score": round(z, 2),
+                "mean": round(mean_val, 1),
+                "std": round(std_val, 1),
+                "severity": sev,
+                "narrative": narr,
+            })
+    return anomalies
+
+
+def _count_consecutive_worsening(values, kpi_name):
+    positive_up = kpi_name in POSITIVE_UP_KPIS
+    count = 0
+    for i in range(1, len(values)):
+        if positive_up:
+            worse = values[i] < values[i - 1]
+        else:
+            worse = values[i] > values[i - 1]
+        if worse:
+            count += 1
+        else:
+            count = 0
+    return count
+
+
+@router.get("/trends")
+async def get_trends(
+    entity_level: str = Query(...),
+    entity_id: str = Query(...),
+    kpi: str = Query("sla_pct"),
+    granularity: str = Query("monthly"),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
+    type_ticket: str = Query(""),
+    severities: str = Query(""),
+    fault_level: str = Query(""),
+):
+    class FakeReq:
+        pass
+    req = FakeReq()
+    req.date_from = date_from
+    req.date_to = date_to
+    req.type_ticket = type_ticket
+    req.severities = [s.strip() for s in severities.split(",") if s.strip()] if severities else []
+    req.fault_level = fault_level
+
+    filters_cond, filters_params = _build_filters(req)
+
+    entity_col_sm = LEVEL_COL_MAP[entity_level][1]
+    kpi_expr = KPI_EXPR_MAP_TREND.get(kpi, KPI_EXPR_MAP_TREND["sla_pct"])
+
+    where = [f"{entity_col_sm} = ?"]
+    params = [entity_id]
+    where.extend(filters_cond)
+    params.extend(filters_params)
+    where_str = " AND ".join(where)
+
+    with get_connection() as conn:
+        rows = conn.execute(f"""
+            SELECT year_month, {kpi_expr} as kpi_value
+            FROM summary_monthly
+            WHERE {where_str}
+            GROUP BY year_month
+            ORDER BY year_month
+        """, params).fetchall()
+
+        data_points = []
+        for r in rows:
+            ym = r[0]
+            parts = ym.split("-")
+            label = f"{MONTH_NAMES.get(parts[1], parts[1])} {parts[0]}" if len(parts) == 2 else ym
+            data_points.append({
+                "period": ym,
+                "value": round(r[1] or 0, 2),
+                "label": label,
+            })
+
+        values = [d["value"] for d in data_points]
+
+        if len(values) < 2:
+            return {
+                "data_points": data_points,
+                "trend": {"slope": 0, "intercept": 0, "direction": "stable", "quality": "neutral",
+                          "icon": "─", "narrative": "Data tidak cukup untuk analisis tren.",
+                          "consecutive_worsening": 0, "projection_3m": None},
+                "anomalies": [],
+                "stats": {"mean": values[0] if values else 0, "std": 0, "min": values[0] if values else 0, "max": values[0] if values else 0},
+                "target": 90.0 if kpi == "sla_pct" else None,
+                "band": {"upper": [], "lower": []},
+            }
+
+        slope, intercept = _linear_regression(values)
+        trend_info = _classify_trend_direction(kpi, slope)
+
+        consec = _count_consecutive_worsening(values, kpi)
+        kpi_label = KPI_LABELS_ID.get(kpi, kpi)
+        thr = TREND_THRESHOLDS.get(kpi, 0.5)
+
+        if trend_info["quality"] == "worsening" and consec >= 3:
+            trend_info["narrative"] += (
+                f" 🔴 Tren memburuk selama {consec} periode berturut-turut. Intervensi segera diperlukan."
+            )
+        if trend_info["quality"] == "worsening" and abs(slope) > 2 * thr:
+            trend_info["narrative"] += (
+                f" 🔴 Penurunan CEPAT — laju {abs(slope):.1f} per bulan jauh di atas batas normal ({thr})."
+            )
+
+        projection = None
+        if trend_info["quality"] == "worsening" and len(values) >= 4:
+            projection = round(values[-1] + slope * 3, 1)
+            trend_info["narrative"] += (
+                f" Jika berlanjut, {kpi_label} akan mencapai ~{projection} dalam 3 bulan."
+            )
+
+        mean_val = stat_mean(values)
+        std_val = stat_stdev(values) if len(values) > 2 else 0
+
+        trend_line = [round(slope * i + intercept, 2) for i in range(len(values))]
+        upper_band = [round(mean_val + 2 * std_val, 2)] * len(values) if std_val > 0 else []
+        lower_band = [round(mean_val - 2 * std_val, 2)] * len(values) if std_val > 0 else []
+
+        anomalies = _detect_anomalies(data_points, kpi)
+
+        target = None
+        if kpi == "sla_pct":
+            target = 90.0
+
+    return {
+        "data_points": data_points,
+        "trend": {
+            "slope": round(slope, 3),
+            "intercept": round(intercept, 2),
+            "direction": trend_info["direction"],
+            "quality": trend_info["quality"],
+            "icon": trend_info["icon"],
+            "narrative": trend_info["narrative"],
+            "consecutive_worsening": consec,
+            "projection_3m": projection,
+        },
+        "anomalies": anomalies,
+        "stats": {
+            "mean": round(mean_val, 2),
+            "std": round(std_val, 2),
+            "min": round(min(values), 2),
+            "max": round(max(values), 2),
+        },
+        "target": target,
+        "band": {"upper": upper_band, "lower": lower_band},
+        "trend_line": trend_line,
+    }
+
+
+HEATMAP_CONFIG = {
+    "monthly": {"type": "week_x_day", "y_labels": ["W1", "W2", "W3", "W4", "W5"],
+                "x_labels": ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]},
+    "weekly": {"type": "day_x_hour", "y_labels": ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"],
+               "x_labels": [f"{h:02d}" for h in range(24)]},
+}
+
+
+@router.get("/heatmap")
+async def get_heatmap(
+    entity_level: str = Query(...),
+    entity_id: str = Query(...),
+    granularity: str = Query("monthly"),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
+    metric: str = Query("volume"),
+    type_ticket: str = Query(""),
+    severities: str = Query(""),
+    fault_level: str = Query(""),
+):
+    config = HEATMAP_CONFIG.get(granularity, HEATMAP_CONFIG["monthly"])
+    entity_col_ticket = LEVEL_COL_MAP[entity_level][0]
+
+    with get_connection() as conn:
+        has_tickets = conn.execute("SELECT COUNT(*) FROM noc_tickets LIMIT 1").fetchone()[0]
+        if has_tickets == 0:
+            return {
+                "heatmap_type": config["type"],
+                "y_labels": config["y_labels"],
+                "x_labels": config["x_labels"],
+                "cells": [],
+                "stats": {"min": 0, "max": 0, "avg": 0},
+                "interpretation": {"narrative": "Tidak ada data tiket untuk heatmap.", "peak_factor": 0},
+            }
+
+        where_parts = [f"{entity_col_ticket} = ?"]
+        params = [entity_id]
+        if date_from:
+            where_parts.append("calc_year_month >= ?")
+            params.append(date_from)
+        if date_to:
+            where_parts.append("calc_year_month <= ?")
+            params.append(date_to)
+        if type_ticket:
+            where_parts.append("type_ticket = ?")
+            params.append(type_ticket)
+        if severities:
+            sev_list = [s.strip() for s in severities.split(",") if s.strip()]
+            if sev_list:
+                placeholders = ",".join(["?" for _ in sev_list])
+                where_parts.append(f"severity IN ({placeholders})")
+                params.extend(sev_list)
+        if fault_level:
+            where_parts.append("fault_level = ?")
+            params.append(fault_level)
+
+        where_str = " AND ".join(where_parts)
+
+        if config["type"] == "week_x_day":
+            rows = conn.execute(f"""
+                SELECT
+                    calc_week_of_month as week_num,
+                    calc_day_of_week as day_of_week,
+                    COUNT(*) as ticket_count
+                FROM noc_tickets
+                WHERE {where_str}
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+            """, params).fetchall()
+
+            cells = [[None] * 7 for _ in range(5)]
+            for r in rows:
+                w = (r[0] or 1) - 1
+                d = r[1] or 0
+                if 0 <= w < 5 and 0 <= d < 7:
+                    cells[w][d] = r[2]
+
+        elif config["type"] == "day_x_hour":
+            rows = conn.execute(f"""
+                SELECT
+                    calc_day_of_week as day_of_week,
+                    calc_hour_of_day as hour,
+                    COUNT(*) as ticket_count
+                FROM noc_tickets
+                WHERE {where_str}
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+            """, params).fetchall()
+
+            cells = [[None] * 24 for _ in range(7)]
+            for r in rows:
+                d = r[0] or 0
+                h = r[1] or 0
+                if 0 <= d < 7 and 0 <= h < 24:
+                    cells[d][h] = r[2]
+        else:
+            cells = []
+
+        flat = [v for row in cells for v in row if v is not None]
+        if not flat:
+            return {
+                "heatmap_type": config["type"],
+                "y_labels": config["y_labels"],
+                "x_labels": config["x_labels"],
+                "cells": cells,
+                "stats": {"min": 0, "max": 0, "avg": 0},
+                "interpretation": {"narrative": "Data tidak tersedia untuk heatmap.", "peak_factor": 0},
+            }
+
+        avg_val = stat_mean(flat)
+        max_val = max(flat)
+        min_val = min(flat)
+
+        peak_y, peak_x, peak_val = 0, 0, 0
+        low_y, low_x, low_val = 0, 0, float("inf")
+        for yi, row in enumerate(cells):
+            for xi, v in enumerate(row):
+                if v is not None:
+                    if v > peak_val:
+                        peak_y, peak_x, peak_val = yi, xi, v
+                    if v < low_val:
+                        low_y, low_x, low_val = yi, xi, v
+
+        peak_factor = peak_val / avg_val if avg_val > 0 else 0
+        low_factor = low_val / avg_val if avg_val > 0 else 0
+
+        parts = []
+        y_labels = config["y_labels"]
+        x_labels = config["x_labels"]
+
+        if peak_factor > 2.0:
+            parts.append(
+                f"⚠️ Hotspot: {y_labels[peak_y]} {x_labels[peak_x]} mengalami "
+                f"{peak_factor:.1f}× volume rata-rata ({peak_val:,} vs avg {avg_val:,.0f}). "
+                f"Pertimbangkan penambahan resource pada periode ini."
+            )
+        elif peak_factor > 1.5:
+            parts.append(
+                f"Puncak gangguan: {y_labels[peak_y]} {x_labels[peak_x]} "
+                f"({peak_val:,} tiket, {peak_factor:.1f}× rata-rata)."
+            )
+        else:
+            parts.append(f"Puncak: {y_labels[peak_y]} {x_labels[peak_x]} ({peak_val:,} tiket).")
+
+        if low_factor < 0.5:
+            parts.append(
+                f"Periode paling tenang: {y_labels[low_y]} {x_labels[low_x]} "
+                f"({low_val:,} tiket) — peluang maintenance window."
+            )
+
+        weekend_labels = {"Sab", "Min", "Sat", "Sun"}
+        if any(l in weekend_labels for l in x_labels):
+            weekday_vals = []
+            weekend_vals = []
+            for row in cells:
+                for xi, v in enumerate(row):
+                    if v is not None:
+                        if x_labels[xi] in weekend_labels:
+                            weekend_vals.append(v)
+                        else:
+                            weekday_vals.append(v)
+            if weekday_vals and weekend_vals:
+                wd_avg = stat_mean(weekday_vals)
+                we_avg = stat_mean(weekend_vals)
+                if wd_avg > 0:
+                    diff_pct = (we_avg - wd_avg) / wd_avg * 100
+                    parts.append(f"Weekend rata-rata {we_avg:,.0f} tiket ({diff_pct:+.0f}% dari weekday).")
+
+    return {
+        "heatmap_type": config["type"],
+        "y_labels": config["y_labels"],
+        "x_labels": config["x_labels"],
+        "cells": cells,
+        "stats": {"min": int(min_val), "max": int(max_val), "avg": round(avg_val, 1)},
+        "interpretation": {
+            "narrative": " ".join(parts),
+            "peak_factor": round(peak_factor, 2),
+            "peak_cell": [peak_y, peak_x],
+            "low_cell": [low_y, low_x],
+        },
+    }
+
+
+@router.get("/child-trends")
+async def get_child_trends(
+    entity_level: str = Query(...),
+    entity_id: str = Query(...),
+    kpi: str = Query("sla_pct"),
+    granularity: str = Query("monthly"),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
+    type_ticket: str = Query(""),
+    severities: str = Query(""),
+    fault_level: str = Query(""),
+):
+    child_level = CHILD_LEVEL_MAP.get(entity_level)
+    if not child_level:
+        return {
+            "parent_trend": {"slope": 0, "direction": "stable", "quality": "neutral"},
+            "children": [],
+            "summary": {"n_improving": 0, "n_stable": 0, "n_worsening": 0, "total": 0},
+            "narrative": "Tidak ada child entity.",
+        }
+
+    class FakeReq:
+        pass
+    req = FakeReq()
+    req.date_from = date_from
+    req.date_to = date_to
+    req.type_ticket = type_ticket
+    req.severities = [s.strip() for s in severities.split(",") if s.strip()] if severities else []
+    req.fault_level = fault_level
+
+    filters_cond, filters_params = _build_filters(req)
+
+    parent_col_sm = LEVEL_COL_MAP[entity_level][1]
+    child_col_sm = LEVEL_COL_MAP[child_level][1]
+    kpi_expr = KPI_EXPR_MAP_TREND.get(kpi, KPI_EXPR_MAP_TREND["sla_pct"])
+
+    where = [f"{parent_col_sm} = ?"]
+    params = [entity_id]
+    where.extend(filters_cond)
+    params.extend(filters_params)
+    where_str = " AND ".join(where)
+
+    with get_connection() as conn:
+        parent_rows = conn.execute(f"""
+            SELECT year_month, {kpi_expr} as kpi_value
+            FROM summary_monthly
+            WHERE {where_str}
+            GROUP BY year_month ORDER BY year_month
+        """, params).fetchall()
+
+        parent_values = [r[1] or 0 for r in parent_rows]
+        parent_slope, _ = _linear_regression(parent_values) if len(parent_values) >= 2 else (0, 0)
+        parent_trend = _classify_trend_direction(kpi, parent_slope)
+
+        child_ids = conn.execute(f"""
+            SELECT DISTINCT {child_col_sm}
+            FROM summary_monthly
+            WHERE {where_str} AND {child_col_sm} IS NOT NULL
+        """, params).fetchall()
+
+        children = []
+        for (child_id,) in child_ids:
+            child_rows = conn.execute(f"""
+                SELECT year_month, {kpi_expr} as kpi_value
+                FROM summary_monthly
+                WHERE {where_str} AND {child_col_sm} = ?
+                GROUP BY year_month ORDER BY year_month
+            """, params + [child_id]).fetchall()
+
+            child_values = [r[1] or 0 for r in child_rows]
+            if len(child_values) >= 2:
+                c_slope, _ = _linear_regression(child_values)
+            else:
+                c_slope = 0
+
+            c_trend = _classify_trend_direction(kpi, c_slope)
+            child_name = _get_entity_name(conn, child_level, child_id)
+
+            children.append({
+                "entity_id": child_id,
+                "entity_name": child_name,
+                "slope": round(c_slope, 2),
+                "direction": c_trend["direction"],
+                "quality": c_trend["quality"],
+                "icon": c_trend["icon"],
+                "current_value": round(child_values[-1], 1) if child_values else 0,
+            })
+
+    children.sort(key=lambda c: c["slope"])
+
+    n_improving = sum(1 for c in children if c["quality"] == "improving")
+    n_stable = sum(1 for c in children if c["quality"] == "neutral")
+    n_worsening = sum(1 for c in children if c["quality"] == "worsening")
+    total = len(children)
+
+    type_labels = {"regional": "Regional", "nop": "NOP", "to": "TO", "site": "Site"}
+    child_type_label = type_labels.get(child_level, child_level)
+
+    parts = [
+        f"Dari {total} {child_type_label}: {n_improving} membaik, "
+        f"{n_stable} stabil, {n_worsening} memburuk."
+    ]
+
+    if parent_trend["quality"] in ("neutral", "improving") and n_worsening >= 2:
+        worst = [c for c in children if c["quality"] == "worsening"][:3]
+        worst_names = ", ".join(f"{c['entity_name']} ({c['slope']:+.1f}pp/bln)" for c in worst)
+        entity_name = _get_entity_name(conn, entity_level, entity_id) if conn else entity_id
+        parts.append(
+            f"⚠️ Meskipun secara keseluruhan "
+            f"{'stabil' if parent_trend['quality'] == 'neutral' else 'membaik'}, "
+            f"{n_worsening} {child_type_label} ({n_worsening / total * 100:.0f}%) "
+            f"menunjukkan penurunan ({worst_names}). "
+            f"Tren negatif ini ter-mask oleh performa baik {child_type_label} lain."
+        )
+
+    if n_worsening == total and total > 0:
+        parts.append(
+            f"🔴 SEMUA {child_type_label} menunjukkan tren memburuk. "
+            f"Masalah bersifat sistemik."
+        )
+
+    return {
+        "parent_trend": {
+            "slope": round(parent_slope, 3),
+            "direction": parent_trend["direction"],
+            "quality": parent_trend["quality"],
+        },
+        "children": children,
+        "summary": {
+            "n_improving": n_improving,
+            "n_stable": n_stable,
+            "n_worsening": n_worsening,
+            "total": total,
+        },
+        "narrative": " ".join(parts),
     }

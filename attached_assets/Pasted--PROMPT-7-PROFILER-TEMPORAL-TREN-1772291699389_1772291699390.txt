@@ -1,0 +1,789 @@
+# ============================================================
+
+# PROMPT 7 — PROFILER TEMPORAL: TREN & HEATMAP
+
+# NOC-IS Analytics Platform v1.0
+
+# Author: Dr. Adam M.
+
+# ============================================================
+
+#
+
+# PRASYARAT:
+
+# Prompt 0-6 sudah dijalankan
+
+# Profiler page sudah ada (selector, Panel 1, KPI cards)
+
+#
+
+# HASIL YANG DIHARAPKAN:
+
+# ✅ Panel 2: Trend Lines (multi-KPI, trend line dashed, target)
+
+# ✅ Heatmap Adaptif (otomatis sesuai granularity)
+
+# ✅ Anomaly Detection (z-score ±2σ band)
+
+# ✅ Child Trend Decomposition (diverging bar)
+
+# ✅ Annotation overlay dari data eksternal (Prompt 5)
+
+# ✅ Temporal drill-down (klik bulan → minggu → hari)
+
+# ✅ Interpretasi rule-based untuk setiap chart
+
+# ============================================================
+
+Lanjutkan pembangunan **NOC-IS Analytics Platform**. Prompt 6 sudah membangun Profiler Core (Panel 1, KPI, behavior). Sekarang bangun **Panel 2: Temporal** — trend lines dan heatmap adaptif.
+
+* * *
+
+## 1. PANEL 2 POSITION
+
+Panel 2 ditempatkan di bawah Panel 1 (KPI Cards) pada halaman Profiler:
+
+    ┌─────────────────────────────────────────────────────┐
+    │  Selector (sticky)                                   │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 1: Identitas + KPI Cards    (dari Prompt 6)  │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 2: TEMPORAL (Tren + Heatmap)  ← PROMPT INI   │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 3: Gangguan             (Prompt 8 nanti)      │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 4: Prediktif            (Prompt 9 nanti)      │
+    ├─────────────────────────────────────────────────────┤
+    │  Panel 5: Child Entities Table (dari Prompt 6)       │
+    └─────────────────────────────────────────────────────┘
+
+* * *
+
+## 2. TREND LINES — Multi-KPI
+
+### 2A. Layout
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  📈 Tren Performa                        KPI: [SLA ▾] [+ Tambah KPI]│
+    │                                                                       │
+    │  ┌── SLA Compliance (%) ────────────────────────────────────────────┐│
+    │  │                    🕌                         📌                   ││
+    │  │ 94 ┤                                                              ││
+    │  │ 92 ┤──●                                                           ││
+    │  │ 90 ┤---●----------target 90%----------------------------------   ││
+    │  │ 88 ┤      ──●──●                                                  ││
+    │  │ 86 ┤               ──●──●──●                                      ││
+    │  │ 84 ┤- - - - - - - - - - - - -●- - trend line (dashed) - - - -   ││
+    │  │    └──Jan───Feb───Mar───Apr───Mei───Jun───Jul──                   ││
+    │  │                                                                   ││
+    │  │  Tren: 📉 MENURUN -1.2pp/bulan selama 7 bulan                    ││
+    │  │  "SLA R03 menunjukkan tren menurun dengan penurunan 1.2pp/bulan. ││
+    │  │   Jika berlanjut, SLA akan mencapai ~82% di akhir Q4 2025."      ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ┌── Volume (tiket/bulan) ──────────────────────────────────────────┐│
+    │  │ 55K ┤                    ⚡                                       ││
+    │  │ 50K ┤         ──●              ──●                                ││
+    │  │ 45K ┤──●──●        ──●──●           ──●                           ││
+    │  │ 40K ┤                                     - - trend - -          ││
+    │  │     └──Jan───Feb───Mar───Apr───Mei───Jun───Jul──                  ││
+    │  │                                                                   ││
+    │  │  Tren: ─ STABIL (perubahan < ±5%/bulan)                          ││
+    │  │  ⚡ Anomali Mar: 52K tiket (z=2.3, rata-rata 45K ± 3K)           ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  [+ Tambah Chart: MTTR | Escalation | Auto-resolve | Repeat]        │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 2B. Trend Line Features
+
+    Setiap trend chart memiliki:
+    
+    1. DATA POINTS (●) — nilai aktual per periode (granularity)
+    2. TREND LINE (---) — linear regression dashed line
+    3. TARGET LINE (===) — horizontal garis target (jika ada)
+       SLA: dari master_sla_target (resolved)
+       MTTR: dari master_threshold (mttr_warning)
+       Escalation: dari master_threshold (esc_rate_warning)
+    4. ±2σ BAND — shaded area abu-abu tipis (confidence band)
+    5. ANOMALY DOTS (● merah) — titik yang z-score > 2
+    6. ANNOTATIONS — icon di atas chart dari ext_annotations
+    
+    User bisa toggle ON/OFF:
+      [✓ Trend line] [✓ Target] [✓ ±2σ band] [✓ Anomaly] [✓ Annotations]
+
+### 2C. Multi-KPI Display
+
+    Default: tampilkan SLA saja.
+    User bisa [+ Tambah KPI] untuk menampilkan chart tambahan:
+    - Setiap KPI = 1 chart terpisah (stacked vertical)
+    - Maksimal 4 chart sekaligus
+    - Semua chart share X-axis (periode yang sama)
+    
+    Urutan KPI: SLA → Volume → MTTR → Escalation → Auto-resolve → Repeat
+
+* * *
+
+## 3. TREND INTERPRETATION RULES
+
+### 3A. Slope Calculation
+
+    def calculate_trend(data_points: list[dict], kpi_name: str) -> dict:
+        """
+        Hitung trend dari data points.
+        data_points: [{period: "2025-01", value: 91.2}, ...]
+        """
+        values = [d['value'] for d in data_points]
+        n = len(values)
+    
+        if n < 2:
+            return {"direction": "insufficient", "slope": 0}
+    
+        # Linear regression: y = mx + b
+        x = list(range(n))
+        slope = linear_regression_slope(x, values)
+    
+        # Mean & std untuk anomaly
+        mean_val = sum(values) / n
+        std_val = (sum((v - mean_val)**2 for v in values) / n) ** 0.5
+    
+        return {
+            "slope": slope,             # per period unit
+            "mean": mean_val,
+            "std": std_val,
+            "direction": classify_direction(kpi_name, slope),
+            "data_points": data_points,
+            "trend_line": [slope * i + intercept for i in range(n)],
+            "upper_band": [mean_val + 2 * std_val] * n,
+            "lower_band": [mean_val - 2 * std_val] * n,
+        }
+
+### 3B. Direction Classification
+
+    def classify_direction(kpi_name: str, slope: float) -> dict:
+        """
+        Classify trend direction berdasarkan KPI type.
+    
+        PENTING: "naik" bisa berarti "membaik" atau "memburuk" tergantung KPI:
+        - SLA, Auto-resolve     → naik = BAIK, turun = BURUK
+        - MTTR, Volume, Esc, Repeat → naik = BURUK, turun = BAIK
+        """
+    
+        # Threshold per KPI (minimum slope yang dianggap bergerak)
+        thresholds = {
+            "sla_pct":          0.5,   # pp per bulan
+            "avg_mttr_min":     30,    # menit per bulan
+            "total_tickets":    5,     # % per bulan (relatif)
+            "escalation_pct":   0.5,   # pp per bulan
+            "auto_resolve_pct": 0.5,   # pp per bulan
+            "repeat_pct":       0.5,   # pp per bulan
+        }
+    
+        thr = thresholds.get(kpi_name, 0.5)
+        positive_up = kpi_name in ("sla_pct", "auto_resolve_pct")
+    
+        if abs(slope) <= thr:
+            return {"direction": "stable", "icon": "─", "quality": "neutral",
+                    "narrative": f"Tren stabil (perubahan < ±{thr}/{period_label})"}
+    
+        if slope > 0:
+            if positive_up:
+                return {"direction": "up", "icon": "📈", "quality": "improving",
+                        "narrative": f"Tren naik (membaik) {slope:.1f}/{period_label}"}
+            else:
+                return {"direction": "up", "icon": "📈", "quality": "worsening",
+                        "narrative": f"Tren naik (memburuk) {slope:.1f}/{period_label}"}
+        else:
+            if positive_up:
+                return {"direction": "down", "icon": "📉", "quality": "worsening",
+                        "narrative": f"Tren turun (memburuk) {abs(slope):.1f}/{period_label}"}
+            else:
+                return {"direction": "down", "icon": "📉", "quality": "improving",
+                        "narrative": f"Tren turun (membaik) {abs(slope):.1f}/{period_label}"}
+
+### 3C. Severity Escalation
+
+    # Tambahan narasi jika tren memburuk:
+    
+    if quality == "worsening" and consecutive_worsening >= 3:
+        narrative += (
+            f" 🔴 Tren memburuk selama {consecutive_worsening} periode "
+            f"berturut-turut. Intervensi segera diperlukan."
+        )
+    
+    if quality == "worsening" and abs(slope) > 2 * threshold:
+        narrative += (
+            f" 🔴 Penurunan CEPAT — laju {abs(slope):.1f} per {period_label} "
+            f"jauh di atas batas normal ({threshold})."
+        )
+    
+    # Proyeksi sederhana (jika data cukup):
+    if quality == "worsening" and n >= 4:
+        projected_3m = current_value + slope * 3
+        narrative += (
+            f" Jika berlanjut, {kpi_label} akan mencapai ~{projected_3m:.1f} "
+            f"dalam 3 bulan."
+        )
+
+* * *
+
+## 4. ANOMALY DETECTION
+
+### 4A. Z-Score Method
+
+    def detect_anomalies(data_points: list[dict], kpi_name: str) -> list[dict]:
+        """
+        Deteksi anomali menggunakan z-score.
+        Anomali = titik data di luar ±2σ dari mean.
+        """
+        values = [d['value'] for d in data_points]
+        mean_val = mean(values)
+        std_val = stdev(values) if len(values) > 2 else 0
+    
+        if std_val == 0:
+            return []
+    
+        anomalies = []
+        for dp in data_points:
+            z = (dp['value'] - mean_val) / std_val
+            if abs(z) > 2:
+                anomalies.append({
+                    "period": dp['period'],
+                    "value": dp['value'],
+                    "z_score": z,
+                    "mean": mean_val,
+                    "std": std_val,
+                    "severity": "significant" if abs(z) > 3 else "moderate",
+                    "narrative": generate_anomaly_narrative(dp, z, mean_val, std_val, kpi_name)
+                })
+    
+        return anomalies
+    
+    
+    def generate_anomaly_narrative(dp, z, mean_val, std_val, kpi_name):
+        direction = "di atas" if z > 0 else "di bawah"
+        severity = "SIGNIFIKAN" if abs(z) > 3 else ""
+    
+        if abs(z) > 3:
+            return (
+                f"🔴 ANOMALI {severity} pada {dp['period']}: "
+                f"{kpi_name} = {dp['value']:.1f} ({abs(z):.1f}σ {direction} rata-rata "
+                f"{mean_val:.1f} ± {std_val:.1f}). Investigasi penyebab diperlukan."
+            )
+        else:
+            return (
+                f"⚡ Anomali pada {dp['period']}: {kpi_name} = {dp['value']:.1f} "
+                f"(z-score: {z:.1f}). Rata-rata historis: {mean_val:.1f} ± {std_val:.1f}."
+            )
+
+### 4B. Visual pada Chart
+
+    Pada line chart, anomali ditampilkan sebagai:
+    - Titik merah besar (●) pada posisi data point
+    - Tooltip saat hover: narasi anomali
+    - ±2σ band: shaded area abu-abu tipis di background chart
+    
+    Chart rendering (Recharts):
+      <ComposedChart>
+        <Area dataKey="upper_band" fill="#f3f4f6" stroke="none" />
+        <Area dataKey="lower_band" fill="white" stroke="none" />
+        <Line dataKey="value" stroke="#3B82F6" dot={renderDot} />
+        <Line dataKey="trend_line" stroke="#3B82F6" strokeDasharray="5 5" />
+        <ReferenceLine y={target} stroke="#EF4444" strokeDasharray="3 3" />
+        {anomalies.map(a => <ReferenceDot x={a.period} y={a.value} fill="red" />)}
+      </ComposedChart>
+    
+      function renderDot(props) {
+        const isAnomaly = anomalies.find(a => a.period === props.payload.period);
+        if (isAnomaly) return <circle cx={props.cx} cy={props.cy} r={6} fill="red" />;
+        return <circle cx={props.cx} cy={props.cy} r={4} fill="#3B82F6" />;
+      }
+
+* * *
+
+## 5. ANNOTATION OVERLAY
+
+### 5A. Data Source
+
+    Annotations dari Prompt 5 (ext_annotations table):
+      GET /api/external/annotations?from={date_from}&to={date_to}&area_id={area_id}
+    
+    Tipe annotations:
+      🕌 holiday  — hari libur nasional (info, garis biru dotted)
+      🌧️ weather  — cuaca ekstrem (warning, garis oranye solid)
+      ⚡ pln      — gangguan PLN (warning/critical, band kuning)
+      📌 custom   — anotasi manual user (sesuai severity)
+
+### 5B. Rendering on Chart
+
+    Annotations ditampilkan sebagai vertical lines/bands di chart:
+    
+      SLA%
+      94 ┤                    
+      92 ┤──●                 
+      90 ┤---●------target----🕌---------📌---------
+      88 ┤      ──●──●        │                      
+      86 ┤               ──●──│──●──●                
+      84 ┤                    │        ──●            
+         └──Jan───Feb───Mar───Apr───Mei───Jun───Jul──
+                              │         │
+                              │         └── "Cutover R03" (📌 custom)
+                              └── "Idul Fitri" (🕌 holiday)
+    
+    Visual per severity:
+      info     → garis vertikal abu dotted + icon di atas
+      warning  → garis vertikal oranye solid + icon
+      critical → band vertikal merah semi-transparan + icon
+    
+    Multi-day annotation (date_end != null):
+      → Render sebagai shaded vertical band (bukan single line)
+      → Contoh: Ramadan (30 hari) → band biru muda
+    
+    Implementasi Recharts:
+      {annotations.map(a => (
+        a.date_end ? (
+          <ReferenceArea x1={a.date} x2={a.date_end} fill={a.color} fillOpacity={0.1} />
+        ) : (
+          <ReferenceLine x={a.date} stroke={a.color} strokeDasharray="3 3"
+            label={{value: a.icon, position: 'top'}} />
+        )
+      ))}
+
+### 5C. Tooltip
+
+    Hover pada annotation icon → tooltip:
+      "🕌 Idul Fitri 1446 H
+       31 Mar - 4 Apr 2025
+       Sumber: built_in"
+    
+      "📌 Cutover Perangkat R03
+       15 Mei 2025
+       Penggantian perangkat utama di 50 site R03
+       Sumber: manual"
+
+* * *
+
+## 6. HEATMAP ADAPTIF
+
+### 6A. Rule: Otomatis Sesuai Granularity
+
+    ┌──────────────┬──────────────┬───────────────┬─────────────────────────┐
+    │ Granularity  │ Heatmap Axis │ Cell Value    │ Insight                 │
+    │ User Pilih   │ (Y × X)      │               │                         │
+    ├──────────────┼──────────────┼───────────────┼─────────────────────────┤
+    │ JAM          │ Entity × Jam │ Ticket count  │ "Entity mana jam ini?"  │
+    │              │ (child × 0-23)│ sum          │                         │
+    ├──────────────┼──────────────┼───────────────┼─────────────────────────┤
+    │ HARI         │ Hari × Jam   │ Ticket count  │ "Hari+jam apa paling    │
+    │              │ (Sen-Min×0-23)│ sum          │  banyak?"               │
+    ├──────────────┼──────────────┼───────────────┼─────────────────────────┤
+    │ MINGGU       │ Hari × Jam   │ Avg tickets   │ "Pola tipikal 1 minggu" │
+    │              │ (overlay avg)│ avg           │  (averaged across weeks)│
+    ├──────────────┼──────────────┼───────────────┼─────────────────────────┤
+    │ BULAN        │ Minggu × Hari│ Ticket count  │ "Minggu+hari mana dalam │
+    │              │ (W1-W5×Sen-Min)│ sum         │  bulan yang padat?"     │
+    ├──────────────┼──────────────┼───────────────┼─────────────────────────┤
+    │ TRIWULAN     │ Bulan × Minggu│ Ticket count │ "Bulan+minggu mana?"    │
+    │              │ (3bln × W1-5)│ sum           │                         │
+    ├──────────────┼──────────────┼───────────────┼─────────────────────────┤
+    │ TAHUN        │ Bulan × Minggu│ Ticket count │ "Pola tahunan"          │
+    │              │ (12bln × W1-5)│ sum          │                         │
+    └──────────────┴──────────────┴───────────────┴─────────────────────────┘
+
+### 6B. Layout
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  🗓️ Pola Temporal                                 [Metrik: Volume ▾] │
+    │                                                                       │
+    │  Granularity saat ini: BULAN → Heatmap: Minggu × Hari                │
+    │                                                                       │
+    │  ┌──────── Minggu × Hari (tiket) ───────────────────────────────────┐│
+    │  │         Sen    Sel    Rab    Kam    Jum    Sab    Min            ││
+    │  │  W1    [ 850] [ 820] [ 790] [ 810] [ 780] [ 520] [ 480]        ││
+    │  │  W2    [ 920] [ 880] [ 830] [ 840] [ 800] [ 540] [ 490]        ││
+    │  │  W3    [ 870] [ 840] [ 800] [ 820] [ 790] [ 530] [ 470]        ││
+    │  │  W4    [1050] [ 980] [ 900] [ 850] [ 820] [ 560] [ 500]        ││
+    │  │  W5    [ 380] [ 350] [    ] [    ] [    ] [    ] [    ]         ││
+    │  │                                                                   ││
+    │  │  Warna: ░ rendah → ▒ sedang → ▓ tinggi                           ││
+    │  │  Legenda: min=350, avg=720, max=1050                              ││
+    │  └───────────────────────────────────────────────────────────────────┘│
+    │                                                                       │
+    │  ── Interpretasi ────────────────────────────────────────────────── │
+    │  "Puncak gangguan: Senin W4 (1.050 tiket, 1.5× rata-rata).          │
+    │   Weekend konsisten lebih rendah (~500-560, -27% dari weekday).      │
+    │   Periode paling tenang: Minggu W5 (350 tiket) — peluang             │
+    │   maintenance window."                                                │
+    │                                                                       │
+    │  Klik sel → drill-down ke detail periode tersebut                    │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 6C. Heatmap Interpretation Rules
+
+    def interpret_heatmap(cells: list[list[float]], y_labels, x_labels) -> dict:
+        """
+        Interpret heatmap → identify peaks, lows, patterns.
+        cells: 2D array of values (Y rows × X cols)
+        """
+        flat = [v for row in cells for v in row if v is not None]
+        if not flat:
+            return {"narrative": "Data tidak tersedia untuk heatmap."}
+    
+        avg = mean(flat)
+        max_val = max(flat)
+        min_val = min(flat)
+    
+        # Find peak cell
+        peak_y, peak_x, peak_val = find_peak(cells)
+        peak_factor = peak_val / avg if avg > 0 else 0
+    
+        # Find low cell
+        low_y, low_x, low_val = find_low(cells)
+        low_factor = low_val / avg if avg > 0 else 0
+    
+        parts = []
+    
+        # Peak interpretation
+        if peak_factor > 2.0:
+            parts.append(
+                f"⚠️ Hotspot: {y_labels[peak_y]} {x_labels[peak_x]} mengalami "
+                f"{peak_factor:.1f}× volume rata-rata ({peak_val:,.0f} vs avg {avg:,.0f}). "
+                f"Pertimbangkan penambahan resource pada periode ini."
+            )
+        elif peak_factor > 1.5:
+            parts.append(
+                f"Puncak gangguan: {y_labels[peak_y]} {x_labels[peak_x]} "
+                f"({peak_val:,.0f} tiket, {peak_factor:.1f}× rata-rata)."
+            )
+        else:
+            parts.append(
+                f"Puncak: {y_labels[peak_y]} {x_labels[peak_x]} ({peak_val:,.0f} tiket)."
+            )
+    
+        # Low / maintenance window
+        if low_factor < 0.5:
+            parts.append(
+                f"Periode paling tenang: {y_labels[low_y]} {x_labels[low_x]} "
+                f"({low_val:,.0f} tiket) — peluang maintenance window."
+            )
+    
+        # Weekend pattern (jika X = hari)
+        if "Sab" in x_labels or "Sat" in x_labels:
+            weekday_avg = calc_weekday_avg(cells, x_labels)
+            weekend_avg = calc_weekend_avg(cells, x_labels)
+            if weekday_avg > 0:
+                diff_pct = (weekend_avg - weekday_avg) / weekday_avg * 100
+                parts.append(
+                    f"Weekend rata-rata {weekend_avg:,.0f} tiket ({diff_pct:+.0f}% dari weekday)."
+                )
+    
+        return {"narrative": " ".join(parts), "peak_factor": peak_factor,
+                "peak_cell": (peak_y, peak_x), "low_cell": (low_y, low_x)}
+
+### 6D. Heatmap Drill-down
+
+    Klik sel heatmap → drill-down temporal:
+    
+    Contoh: Granularity=Bulan, Heatmap Minggu×Hari
+      Klik sel "W4, Senin" →
+      1. Update selector: granularity=Hari, periode=W4 bulan ini
+      2. Heatmap berubah ke Hari×Jam
+      3. Trend line zoom ke W4
+    
+    Contoh: Granularity=Minggu, Heatmap Hari×Jam
+      Klik sel "Selasa, 02:00" →
+      1. Show detail: semua tiket pada Selasa 02:00-03:00 dalam range
+      2. Popup/modal: list tiket, top fault levels
+
+* * *
+
+## 7. CHILD TREND DECOMPOSITION
+
+### 7A. Layout (hanya untuk level TO ke atas)
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  📊 Tren per Child                                                    │
+    │                                                                       │
+    │  Dari 6 NOP: 1 membaik, 3 stabil, 2 memburuk                        │
+    │                                                                       │
+    │  Memburuk ◄───────│───────► Membaik                                  │
+    │                    │                                                  │
+    │  NOP Jakarta  ◄████████│                    SLA: -2.1pp/bln          │
+    │  NOP Bekasi    ◄█████│                      SLA: -1.3pp/bln          │
+    │                      │                                                │
+    │  NOP Bandung         │─                     SLA: +0.1pp/bln (stabil) │
+    │  NOP Tangerang       │─                     SLA: -0.2pp/bln (stabil) │
+    │  NOP Depok           │─                     SLA: +0.3pp/bln (stabil) │
+    │                      │                                                │
+    │  NOP Bogor           │███████►              SLA: +1.8pp/bln          │
+    │                      │                                                │
+    │  ── Interpretasi ──────────────────────────────────────────────────  │
+    │  "⚠️ Meskipun R03 secara keseluruhan relatif stabil, 2 NOP (33%)    │
+    │   menunjukkan tren menurun (Jakarta -2.1pp/bln, Bekasi -1.3pp/bln). │
+    │   Tren negatif ini ter-mask oleh performa stabil NOP lain.           │
+    │   Tanpa intervensi, SLA R03 akan mulai menurun dalam 1-2 bulan."    │
+    │                                                                       │
+    │  Klik bar → navigate ke profil NOP tersebut                          │
+    └──────────────────────────────────────────────────────────────────────┘
+
+### 7B. Interpretation Rules
+
+    def interpret_child_trends(children_trends: list, parent_trend) -> dict:
+        n_improving = sum(1 for c in children_trends if c['quality'] == 'improving')
+        n_stable = sum(1 for c in children_trends if c['quality'] == 'neutral')
+        n_worsening = sum(1 for c in children_trends if c['quality'] == 'worsening')
+        total = len(children_trends)
+    
+        parts = [
+            f"Dari {total} {child_type_label}: {n_improving} membaik, "
+            f"{n_stable} stabil, {n_worsening} memburuk."
+        ]
+    
+        # Hidden deterioration pattern
+        if parent_trend['quality'] in ('neutral', 'improving') and n_worsening >= 2:
+            worst = sorted([c for c in children_trends if c['quality'] == 'worsening'],
+                           key=lambda c: c['slope'])
+            worst_names = ", ".join(f"{c['name']} ({c['slope']:+.1f}pp/bln)" for c in worst[:3])
+            parts.append(
+                f"⚠️ Meskipun {parent_name} secara keseluruhan "
+                f"{'stabil' if parent_trend['quality'] == 'neutral' else 'membaik'}, "
+                f"{n_worsening} {child_type_label} ({n_worsening/total*100:.0f}%) "
+                f"menunjukkan penurunan ({worst_names}). "
+                f"Tren negatif ini ter-mask oleh performa baik {child_type_label} lain."
+            )
+    
+        # All worsening
+        if n_worsening == total:
+            parts.append(
+                f"🔴 SEMUA {child_type_label} menunjukkan tren memburuk. "
+                f"Masalah bersifat sistemik di seluruh {parent_name}."
+            )
+    
+        return {"narrative": " ".join(parts), 
+                "n_improving": n_improving, "n_stable": n_stable, "n_worsening": n_worsening}
+
+* * *
+
+## 8. TEMPORAL DRILL-DOWN FLOW
+
+    User bisa drill-down temporal: dari granularity besar ke kecil.
+    
+    Tahun → Triwulan → Bulan → Minggu → Hari → Jam
+    
+    Cara:
+    1. Klik data point pada trend line → zoom ke granularity lebih kecil
+       Klik titik "Mar 2025" pada trend bulanan →
+       Update selector: granularity=Minggu, periode=1 Mar - 31 Mar 2025
+    
+    2. Klik sel heatmap → zoom ke granularity lebih kecil
+       (lihat Section 6D)
+    
+    3. Breadcrumb temporal selalu terupdate:
+       🕐 2025 > Mar > W2 > Selasa
+       Klik "Mar" → kembali ke granularity Bulan, periode Maret
+       Klik "2025" → kembali ke granularity Tahun
+    
+    Batasan:
+    - Drill-down ke level Jam memerlukan query ke noc_tickets (bukan summary)
+    - Tampilkan warning: "Memuat data detail (~30K tiket)..."
+    - Gunakan loading skeleton saat fetch
+
+* * *
+
+## 9. API ENDPOINTS
+
+### 9A. Trend Data
+
+    GET /api/profiler/trends
+      ← Query: ?entity_level=regional &entity_id=R03
+                &kpi=sla_pct           // kpi yang diminta
+                &granularity=monthly
+                &date_from=2025-01-01 &date_to=2025-07-31
+                &type_ticket= &severities= &fault_level= &rc_category=
+      → Return: {
+          data_points: [
+            {period: "2025-01", value: 92.1, label: "Jan 2025"},
+            {period: "2025-02", value: 91.5, label: "Feb 2025"},
+            ...
+          ],
+          trend: {
+            slope: -1.2,          // per period
+            intercept: 93.5,
+            direction: "down",
+            quality: "worsening",
+            icon: "📉",
+            narrative: "SLA R03 menunjukkan tren menurun -1.2pp/bulan...",
+            consecutive_worsening: 5,
+            projection_3m: 82.0
+          },
+          anomalies: [
+            {period: "2025-03", value: 88.0, z_score: -2.3, 
+             severity: "moderate", narrative: "..."}
+          ],
+          stats: {mean: 89.2, std: 2.1, min: 84.0, max: 92.1},
+          target: 90.0,    // dari SLA target rules
+          band: {upper: [93.4, ...], lower: [85.0, ...]}
+        }
+
+### 9B. Heatmap Data
+
+    GET /api/profiler/heatmap
+      ← Query: ?entity_level=regional &entity_id=R03
+                &granularity=monthly
+                &date_from=2025-01-01 &date_to=2025-07-31
+                &metric=volume         // volume | sla | mttr
+                &type_ticket= &severities= &fault_level=
+      → Return: {
+          heatmap_type: "week_x_day",   // auto-determined by granularity
+          y_labels: ["W1", "W2", "W3", "W4", "W5"],
+          x_labels: ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"],
+          cells: [
+            [850, 820, 790, 810, 780, 520, 480],
+            [920, 880, 830, 840, 800, 540, 490],
+            [870, 840, 800, 820, 790, 530, 470],
+            [1050, 980, 900, 850, 820, 560, 500],
+            [380, 350, null, null, null, null, null]
+          ],
+          stats: {min: 350, max: 1050, avg: 720},
+          interpretation: {
+            narrative: "Puncak gangguan: Senin W4 (1.050, 1.5× rata-rata)...",
+            peak_factor: 1.46,
+            peak_cell: [3, 0],   // W4, Sen
+            low_cell: [4, 1]     // W5, Sel
+          }
+        }
+
+### 9C. Child Trends
+
+    GET /api/profiler/child-trends
+      ← Query: ?entity_level=regional &entity_id=R03
+                &kpi=sla_pct &granularity=monthly
+                &date_from= &date_to=
+      → Return: {
+          parent_trend: {slope, direction, quality},
+          children: [
+            {entity_id: "NOP_JKT", entity_name: "NOP Jakarta",
+             slope: -2.1, direction: "down", quality: "worsening"},
+            {entity_id: "NOP_BDG", entity_name: "NOP Bandung",
+             slope: 0.1, direction: "stable", quality: "neutral"},
+            ...
+          ],
+          summary: {n_improving: 1, n_stable: 3, n_worsening: 2, total: 6},
+          narrative: "⚠️ Meskipun R03 secara keseluruhan stabil, 2 NOP..."
+        }
+
+### 9D. Annotations (proxy ke Prompt 5 API)
+
+    GET /api/external/annotations?from={date_from}&to={date_to}&area_id={area_id}
+      → Return: list annotations (sudah ada dari Prompt 5)
+      → Frontend menambahkan sebagai overlay pada chart
+
+* * *
+
+## 10. HEATMAP DATA SOURCE
+
+    PENTING: Heatmap memerlukan granularity LEBIH HALUS dari yang dipilih user.
+    
+    Jika user pilih granularity=Bulan, heatmap Minggu×Hari:
+      → Butuh data per-hari (minggu ke-berapa + hari apa)
+      → Query summary_monthly TIDAK cukup (hanya per-bulan)
+      → Butuh query ke noc_tickets:
+    
+      SELECT 
+        EXTRACT(WEEK FROM occured_time) - 
+          EXTRACT(WEEK FROM DATE_TRUNC('month', occured_time)) + 1 AS week_num,
+        EXTRACT(DOW FROM occured_time) AS day_of_week,
+        COUNT(*) AS ticket_count
+      FROM noc_tickets
+      WHERE calc_regional_id = 'R03'
+        AND calc_year_month BETWEEN '2025-01' AND '2025-07'
+      GROUP BY 1, 2
+    
+    Jika user pilih granularity=Minggu, heatmap Hari×Jam:
+      → Butuh data per-jam
+      → Query noc_tickets:
+    
+      SELECT
+        EXTRACT(DOW FROM occured_time) AS day_of_week,
+        EXTRACT(HOUR FROM occured_time) AS hour,
+        COUNT(*) AS ticket_count
+      FROM noc_tickets
+      WHERE calc_regional_id = 'R03'
+        AND calc_year_month BETWEEN '2025-01' AND '2025-07'
+      GROUP BY 1, 2
+    
+    PERFORMA: Query heatmap bisa lambat (1.3M rows).
+      → Gunakan DuckDB aggregate (sangat cepat untuk analitik)
+      → Cache hasil di memory (untuk sesi yang sama)
+      → Tampilkan loading skeleton saat fetch
+
+* * *
+
+## 11. REACT COMPONENT STRUCTURE
+
+    frontend/src/components/profiler/temporal/
+      ├── TemporalPanel.jsx          ← container Panel 2
+      ├── TrendChart.jsx             ← Recharts line chart + trend + band + anomaly
+      ├── TrendMultiKpi.jsx          ← multi-KPI stacked charts
+      ├── HeatmapAdaptive.jsx        ← auto-select heatmap type by granularity
+      ├── HeatmapGrid.jsx            ← render cell grid (reusable)
+      ├── ChildTrendBar.jsx          ← diverging bar chart
+      ├── AnnotationOverlay.jsx      ← render annotations on chart
+      ├── AnomalyDot.jsx             ← red dot + tooltip
+      └── TrendInterpretation.jsx    ← narasi box di bawah chart
+    
+    Recharts components used:
+      LineChart, ComposedChart, Area, Line, ReferenceLine, 
+      ReferenceArea, ReferenceDot, Tooltip, Legend
+    
+    Heatmap: custom component (bukan Recharts)
+      → CSS Grid atau Table dengan background-color gradien
+      → Color scale: white (min) → yellow → orange → red (max)
+      → Hover: show value + tooltip
+      → Click: drill-down
+
+* * *
+
+## CATATAN PENTING
+
+1. **Trend data**: query summary_monthly (pre-aggregated) untuk data points.Slope dihitung di backend Python.
+  
+2. **Heatmap data**: harus query noc_tickets (butuh granularity halus).DuckDB aggregate cepat, tapi tetap tampilkan loading.
+  
+3. **Annotations**: dari Prompt 5 API. Jika ext_annotations kosong,chart tanpa annotation (tidak error).
+  
+4. **Heatmap color**: light mode palette.Min → #F7F7F7 (putih abu), Max → #DC2626 (merah-600).Gunakan color scale linear.
+  
+5. **Child trend decomposition**: hanya untuk level TO ke atas.Site level tidak punya child → section ini hidden.
+  
+6. **Prompt 8 (berikutnya)**: Panel 3 Gangguan — severity breakdown,fault Pareto, cross-dimension analysis, root cause drill-down.
+  
+
+* * *
+
+## VALIDASI SETELAH SELESAI
+
+* [ ] Panel 2 muncul di bawah KPI Cards pada halaman Profiler
+* [ ] Trend line SLA: data points + trend dashed + target line
+* [ ] ±2σ band ditampilkan sebagai shaded area
+* [ ] Anomaly: titik merah pada data point z > 2, tooltip dengan narasi
+* [ ] Multi-KPI: user bisa tambah chart MTTR, Volume, dll (max 4)
+* [ ] Toggle: trend line / target / band / anomaly / annotations
+* [ ] Annotations overlay: vertikal lines + icons dari ext_annotations
+* [ ] Annotation tooltip: title + description + source
+* [ ] Heatmap adaptif: otomatis berubah sesuai granularity
+  * [ ] Jam → Entity×Jam
+  * [ ] Hari → Hari×Jam
+  * [ ] Minggu → Hari×Jam (averaged)
+  * [ ] Bulan → Minggu×Hari
+  * [ ] Triwulan → Bulan×Minggu
+* [ ] Heatmap color scale: putih → merah, hover menampilkan value
+* [ ] Heatmap interpretasi: peak, low, weekend pattern otomatis
+* [ ] Heatmap drill-down: klik sel → zoom ke granularity lebih kecil
+* [ ] Child trend decomposition: diverging bar (memburuk ← | → membaik)
+* [ ] Child trend narasi: hidden deterioration detection
+* [ ] Temporal breadcrumb terupdate saat drill-down
+* [ ] API /api/profiler/trends return data + trend + anomalies
+* [ ] API /api/profiler/heatmap return cells + interpretation
+* [ ] API /api/profiler/child-trends return diverging data + narasi

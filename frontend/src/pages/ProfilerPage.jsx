@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, ArrowUpDown } from 'lucide-react';
 import useProfilerStore from '../stores/profilerStore';
+import TemporalPanel from '../components/profiler/TemporalPanel';
 
 const LEVEL_OPTIONS = [
   { value: 'area', label: 'Area' },
@@ -116,6 +117,11 @@ export default function ProfilerPage() {
     childrenData, childrenLoading, childrenSort, childrenOrder, fetchChildren,
     peerData, peerLoading, peerKpi, fetchPeerRanking,
     drillDown, navigateBreadcrumb,
+    trendData, trendLoading, trendMultiData, trendKpis,
+    heatmapData, heatmapLoading,
+    childTrendData, childTrendLoading,
+    annotations,
+    setTrendKpis, fetchMultiTrends, fetchChildTrends,
   } = useProfilerStore();
 
   useEffect(() => {
@@ -195,6 +201,33 @@ export default function ProfilerPage() {
           <KpiPanel
             kpis={profileData.kpis}
             recommendations={profileData.recommendations}
+          />
+
+          <TemporalPanel
+            trendData={trendData}
+            trendMultiData={trendMultiData}
+            trendKpis={trendKpis}
+            trendLoading={trendLoading}
+            heatmapData={heatmapData}
+            heatmapLoading={heatmapLoading}
+            childTrendData={childTrendData}
+            childTrendLoading={childTrendLoading}
+            annotations={annotations}
+            entityLevel={filters.entityLevel}
+            onAddKpi={(kpi) => {
+              const newKpis = [...trendKpis, kpi].slice(0, 4);
+              setTrendKpis(newKpis);
+              fetchMultiTrends(newKpis);
+            }}
+            onRemoveKpi={(kpi) => {
+              const newKpis = trendKpis.filter(k => k !== kpi);
+              if (newKpis.length === 0) return;
+              setTrendKpis(newKpis);
+              fetchMultiTrends(newKpis);
+            }}
+            onChildTrendKpiChange={(kpi) => {
+              fetchChildTrends(kpi);
+            }}
           />
 
           <ChildrenPanel

@@ -31,6 +31,19 @@ const useProfilerStore = create((set, get) => ({
   peerLoading: false,
   peerKpi: 'sla_pct',
 
+  trendData: null,
+  trendLoading: false,
+  trendKpis: ['sla_pct'],
+  trendMultiData: {},
+
+  heatmapData: null,
+  heatmapLoading: false,
+
+  childTrendData: null,
+  childTrendLoading: false,
+
+  annotations: [],
+
   setFilters: (updates) => {
     set((s) => ({ filters: { ...s.filters, ...updates } }));
   },
@@ -52,6 +65,12 @@ const useProfilerStore = create((set, get) => ({
       childrenData: null,
       peerData: null,
       profileError: null,
+      trendData: null,
+      trendMultiData: {},
+      trendKpis: ['sla_pct'],
+      heatmapData: null,
+      childTrendData: null,
+      annotations: [],
     });
   },
 
@@ -87,6 +106,7 @@ const useProfilerStore = create((set, get) => ({
 
       get().fetchChildren();
       get().fetchPeerRanking();
+      get().fetchTemporalData();
     } catch (err) {
       set({ profileLoading: false, profileError: err.response?.data?.detail || 'Gagal generate profil' });
     }
@@ -142,6 +162,138 @@ const useProfilerStore = create((set, get) => ({
     } catch {
       set({ peerLoading: false });
     }
+  },
+
+  fetchTrend: async (kpi) => {
+    const { filters } = get();
+    if (!filters.entityId) return;
+    set({ trendLoading: true });
+    try {
+      const res = await axios.get('/api/profiler/trends', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          kpi: kpi || 'sla_pct',
+          granularity: filters.granularity,
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+          fault_level: filters.faultLevel,
+        },
+      });
+      set((s) => ({
+        trendData: res.data,
+        trendLoading: false,
+        trendMultiData: { ...s.trendMultiData, [kpi || 'sla_pct']: res.data },
+      }));
+    } catch {
+      set({ trendLoading: false });
+    }
+  },
+
+  fetchMultiTrends: async (kpiList) => {
+    const { filters } = get();
+    if (!filters.entityId) return;
+    set({ trendLoading: true });
+    const results = {};
+    for (const kpi of kpiList) {
+      try {
+        const res = await axios.get('/api/profiler/trends', {
+          params: {
+            entity_level: filters.entityLevel,
+            entity_id: filters.entityId,
+            kpi,
+            granularity: filters.granularity,
+            date_from: filters.dateFrom,
+            date_to: filters.dateTo,
+            type_ticket: filters.typeTicket,
+            severities: filters.severities.join(','),
+            fault_level: filters.faultLevel,
+          },
+        });
+        results[kpi] = res.data;
+      } catch { /* skip failed */ }
+    }
+    set({
+      trendMultiData: results,
+      trendData: results[kpiList[0]] || null,
+      trendLoading: false,
+    });
+  },
+
+  setTrendKpis: (kpis) => {
+    set({ trendKpis: kpis });
+  },
+
+  fetchHeatmap: async () => {
+    const { filters } = get();
+    if (!filters.entityId) return;
+    set({ heatmapLoading: true });
+    try {
+      const res = await axios.get('/api/profiler/heatmap', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          granularity: filters.granularity,
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+          fault_level: filters.faultLevel,
+        },
+      });
+      set({ heatmapData: res.data, heatmapLoading: false });
+    } catch {
+      set({ heatmapLoading: false });
+    }
+  },
+
+  fetchChildTrends: async (kpi) => {
+    const { filters } = get();
+    if (!filters.entityId || filters.entityLevel === 'site') return;
+    set({ childTrendLoading: true });
+    try {
+      const res = await axios.get('/api/profiler/child-trends', {
+        params: {
+          entity_level: filters.entityLevel,
+          entity_id: filters.entityId,
+          kpi: kpi || 'sla_pct',
+          granularity: filters.granularity,
+          date_from: filters.dateFrom,
+          date_to: filters.dateTo,
+          type_ticket: filters.typeTicket,
+          severities: filters.severities.join(','),
+          fault_level: filters.faultLevel,
+        },
+      });
+      set({ childTrendData: res.data, childTrendLoading: false });
+    } catch {
+      set({ childTrendLoading: false });
+    }
+  },
+
+  fetchAnnotations: async () => {
+    const { filters, profileData } = get();
+    try {
+      const params = {};
+      if (filters.dateFrom) params.from = filters.dateFrom + '-01';
+      if (filters.dateTo) params.to = filters.dateTo + '-28';
+      const areaId = profileData?.identity?.parent_chain?.find(p => p.level === 'area')?.id || (filters.entityLevel === 'area' ? filters.entityId : '');
+      if (areaId) params.area_id = areaId;
+      const res = await axios.get('/api/external/annotations', { params });
+      set({ annotations: res.data || [] });
+    } catch {
+      set({ annotations: [] });
+    }
+  },
+
+  fetchTemporalData: async () => {
+    const state = get();
+    state.fetchMultiTrends(state.trendKpis);
+    state.fetchHeatmap();
+    state.fetchChildTrends(state.trendKpis[0]);
+    state.fetchAnnotations();
   },
 
   drillDown: (childLevel, childId) => {

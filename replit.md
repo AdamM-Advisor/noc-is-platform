@@ -27,7 +27,7 @@ backend/
     sla_target.py      - SLA target rules CRUD + resolver + impact
     data_quality.py    - Data quality summary endpoint
     external.py        - External data: calendar, weather, PLN, annotations, correlation
-    profiler.py        - Profiler engine: generate profile, children, peer ranking, filter options
+    profiler.py        - Profiler engine: generate profile, children, peer ranking, filter options, trends, heatmap, child-trends
   services/
     backup_service.py  - Auto-backup logic (retain 3)
     upload_service.py  - Chunk assembly + validation
@@ -55,7 +55,12 @@ frontend/
       Dashboard.jsx    - Placeholder with health info
       UploadPage.jsx   - Full processing pipeline UI + coverage matrix + data management
       MasterDataPage.jsx - 5-tab master data management
-      ProfilerPage.jsx - 3-Dimension Profiler (entity/waktu/gangguan selector, identity, KPI, children, peer ranking)
+      ProfilerPage.jsx - 3-Dimension Profiler (entity/waktu/gangguan selector, identity, KPI, children, peer ranking, temporal panel)
+      components/profiler/
+        TemporalPanel.jsx  - Panel 2: Temporal analysis (tabs: trend, heatmap, child decomposition)
+        TrendChart.jsx     - Recharts ComposedChart with trend line, ±2σ band, anomaly dots, annotations
+        HeatmapAdaptive.jsx - CSS grid heatmap (adaptive: week×day or day×hour)
+        ChildTrendBar.jsx  - Diverging bar chart for child entity trend decomposition
       ExternalDataPage.jsx - 5-tab external data (Cuaca, PLN, Kalender, Anotasi, Korelasi)
       SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
       master/
@@ -66,7 +71,7 @@ frontend/
         DataQualityTab.jsx - Data quality dashboard + orphan management
     stores/
       cacheStore.js    - Zustand cache with 5-min TTL
-      profilerStore.js - Profiler state: filters, profile data, children, peer ranking
+      profilerStore.js - Profiler state: filters, profile data, children, peer ranking, trends, heatmap, child-trends, annotations
 
 data/                  - Database directory (persistent)
   backups/             - Auto-backup directory (max 3)
