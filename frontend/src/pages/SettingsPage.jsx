@@ -1,13 +1,27 @@
 import { useState, useEffect } from 'react';
-import { Database, HardDrive, RotateCcw, Download } from 'lucide-react';
+import { Database, HardDrive, RotateCcw, Download, CheckCircle, XCircle, TableProperties } from 'lucide-react';
 import client from '../api/client';
 import LoadingWrapper from '../components/LoadingWrapper';
 import DangerZone from '../components/DangerZone';
+
+const TABLE_GROUPS = {
+  "Master Tables": [
+    "master_area", "master_regional", "master_nop", "master_to",
+    "master_site", "master_sla_target", "master_threshold"
+  ],
+  "Data Tables": [
+    "noc_tickets", "summary_monthly", "summary_weekly", "risk_score_history"
+  ],
+  "System Tables": [
+    "saved_views", "report_history", "import_logs", "orphan_log"
+  ],
+};
 
 function SettingsPage() {
   const [dbInfo, setDbInfo] = useState(null);
   const [health, setHealth] = useState(null);
   const [backups, setBackups] = useState([]);
+  const [schemaStatus, setSchemaStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -16,14 +30,16 @@ function SettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [dbRes, healthRes, backupRes] = await Promise.all([
+      const [dbRes, healthRes, backupRes, schemaRes] = await Promise.all([
         client.get('/admin/db-info'),
         client.get('/health'),
         client.get('/admin/backups'),
+        client.get('/schema/status'),
       ]);
       setDbInfo(dbRes.data);
       setHealth(healthRes.data);
       setBackups(backupRes.data.backups);
+      setSchemaStatus(schemaRes.data);
     } catch (err) {
       setError('Gagal memuat data settings.');
     } finally {
@@ -35,13 +51,35 @@ function SettingsPage() {
     fetchData();
   }, []);
 
+  const handleInitSchema = async () => {
+    setActionLoading(true);
+    try {
+      await client.post('/schema/init');
+      await fetchData();
+    } catch (err) {
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResetSeed = async () => {
+    if (!confirm('Reset seed data (threshold & SLA target) ke default?')) return;
+    setActionLoading(true);
+    try {
+      await client.post('/schema/seed-reset');
+      await fetchData();
+    } catch (err) {
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleBackup = async () => {
     setActionLoading(true);
     try {
       await client.post('/admin/backup');
       await fetchData();
     } catch (err) {
-      // handled by interceptor
     } finally {
       setActionLoading(false);
     }
@@ -54,7 +92,6 @@ function SettingsPage() {
       await client.post('/admin/restore', { backup_filename: filename });
       await fetchData();
     } catch (err) {
-      // handled by interceptor
     } finally {
       setActionLoading(false);
     }
@@ -66,7 +103,6 @@ function SettingsPage() {
       await client.post('/admin/delete-data');
       await fetchData();
     } catch (err) {
-      // handled by interceptor
     } finally {
       setActionLoading(false);
     }
@@ -78,7 +114,6 @@ function SettingsPage() {
       await client.post('/admin/reset-database');
       await fetchData();
     } catch (err) {
-      // handled by interceptor
     } finally {
       setActionLoading(false);
     }
@@ -90,6 +125,77 @@ function SettingsPage() {
 
       <LoadingWrapper loading={loading} error={error} onRetry={fetchData}>
         <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <TableProperties size={18} className="text-blue-600" />
+                <h3 className="font-semibold text-gray-800 text-sm">Database Schema</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {schemaStatus?.initialized ? (
+                  <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    Initialized ({schemaStatus.total_tables} tables)
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    Not Initialized
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {schemaStatus && (
+              <div className="space-y-4">
+                {Object.entries(TABLE_GROUPS).map(([groupName, tableNames]) => (
+                  <div key={groupName}>
+                    <p className="text-xs font-semibold text-gray-500 mb-1.5">{groupName}</p>
+                    <div className="space-y-1">
+                      {tableNames.map((tbl) => {
+                        const info = schemaStatus.tables?.[tbl];
+                        return (
+                          <div key={tbl} className="flex items-center gap-2 text-xs">
+                            {info?.exists ? (
+                              <CheckCircle size={14} className="text-green-500" />
+                            ) : (
+                              <XCircle size={14} className="text-gray-300" />
+                            )}
+                            <span className="text-gray-700 font-mono">{tbl}</span>
+                            <span className="text-gray-400">
+                              ({info?.exists ? `${info.rows} rows` : 'not created'})
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+              <button
+                onClick={handleInitSchema}
+                disabled={actionLoading}
+                className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
+                  schemaStatus?.initialized
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {actionLoading ? 'Processing...' : 'Initialize Schema'}
+              </button>
+              <button
+                onClick={handleResetSeed}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Reset Seed Data
+              </button>
+            </div>
+          </div>
+
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center gap-2 mb-4">
               <Database size={18} className="text-blue-600" />
