@@ -27,6 +27,7 @@ backend/
     sla_target.py      - SLA target rules CRUD + resolver + impact
     data_quality.py    - Data quality summary endpoint
     external.py        - External data: calendar, weather, PLN, annotations, correlation
+    profiler.py        - Profiler engine: generate profile, children, peer ranking, filter options
   services/
     backup_service.py  - Auto-backup logic (retain 3)
     upload_service.py  - Chunk assembly + validation
@@ -39,6 +40,7 @@ backend/
     ticket_processor.py - Process ticket data (17 calculated columns)
     summary_service.py - Refresh summary_monthly + summary_weekly
     calendar_service.py - Calendar generation, holiday seeds 2025-2026, Ramadan ranges
+    behavior_service.py - Behavior labeling (6 labels), KPI interpretation, narrative generation, recommendations
 
 frontend/
   src/
@@ -53,6 +55,7 @@ frontend/
       Dashboard.jsx    - Placeholder with health info
       UploadPage.jsx   - Full processing pipeline UI + coverage matrix + data management
       MasterDataPage.jsx - 5-tab master data management
+      ProfilerPage.jsx - 3-Dimension Profiler (entity/waktu/gangguan selector, identity, KPI, children, peer ranking)
       ExternalDataPage.jsx - 5-tab external data (Cuaca, PLN, Kalender, Anotasi, Korelasi)
       SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
       master/
@@ -63,6 +66,7 @@ frontend/
         DataQualityTab.jsx - Data quality dashboard + orphan management
     stores/
       cacheStore.js    - Zustand cache with 5-min TTL
+      profilerStore.js - Profiler state: filters, profile data, children, peer ranking
 
 data/                  - Database directory (persistent)
   backups/             - Auto-backup directory (max 3)
@@ -199,6 +203,10 @@ exports/               - Generated reports
 - `GET /api/external/correlation/weather` - Weather vs tickets correlation
 - `GET /api/external/correlation/pln` - PLN vs tickets correlation
 - `GET /api/external/correlation/calendar` - Workday vs holiday correlation
+- `POST /api/profiler/generate` - Generate full profile (identity+KPIs+behavior+narrative+recommendations)
+- `GET /api/profiler/children` - Paginated child entities with KPIs+behavior
+- `GET /api/profiler/peer-ranking` - Peer comparison with percentile+narrative
+- `GET /api/profiler/filter-options` - Cascading dropdown options (areas/regionals/nops/tos/periods)
 
 ## Key Constraints
 - DuckDB single-writer: only 1 write connection via threading.Lock

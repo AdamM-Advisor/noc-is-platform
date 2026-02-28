@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, Upload, Settings, Menu, X, Info, Database, Globe } from 'lucide-react';
+import { BarChart3, Upload, Settings, Menu, X, Info, Database, Globe, Search } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', icon: BarChart3, label: 'Dashboard' },
+  { to: '/profiler', icon: Search, label: 'Profiler' },
   { to: '/upload', icon: Upload, label: 'Upload' },
   { to: '/master-data', icon: Database, label: 'Master Data' },
   { to: '/external-data', icon: Globe, label: 'Data Eksternal' },

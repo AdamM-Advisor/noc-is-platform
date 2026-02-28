@@ -1,0 +1,563 @@
+# ============================================================
+# PROMPT 6 — PROFILER CORE: IDENTITAS, KPI & PERFORMA
+# NOC-IS Analytics Platform v1.0
+# Author: Dr. Adam M.
+# ============================================================
+#
+# PRASYARAT:
+#   Prompt 0-5 sudah dijalankan (fondasi + data management)
+#   Data tiket sudah bisa di-upload dan summary_monthly terisi
+#
+# INI ADALAH JANTUNG PLATFORM — Profiler Engine dimulai di sini.
+#
+# HASIL YANG DIHARAPKAN:
+# ✅ Halaman Profiler dengan 3-Dimension Selector
+# ✅ Panel 1: Identitas & Ringkasan (info card, behavior badge)
+# ✅ KPI Cards (6 metrik) dengan interpretasi rule-based
+# ✅ Panel 5: Child Entities Table (peer ranking, drill-down)
+# ✅ Behavior Labeling Engine (Chronic/Healthy/Deteriorating/dll)
+# ✅ Peer Ranking (horizontal bar, percentile)
+# ✅ Interpretation Engine (narasi otomatis rule-based)
+# ✅ Breadcrumb Navigation (3 hierarki)
+# ✅ Drill-down antar level hierarki
+# ============================================================
+
+Lanjutkan pembangunan **NOC-IS Analytics Platform**. Prompt sebelumnya sudah membangun semua infrastruktur data. Sekarang bangun **Profiler Engine** — jantung analitik platform.
+
+**KONSEP**: Profiler bukan dashboard angka biasa. Profiler "mem-profil" setiap entitas dari 3 dimensi: **Site** (siapa), **Waktu** (kapan), **Gangguan** (apa). Setiap irisan menghasilkan profil bermakna.
+
+---
+
+## 1. NAVIGASI — Tambah Menu Profiler
+
+Update sidebar:
+```
+SIDEBAR:
+  📊 Dashboard        (Prompt 10 nanti)
+  🔍 Profiler         ← BARU — halaman utama analitik
+  📤 Upload
+  🗂️ Master Data
+  🌍 Data Eksternal
+  ⚙️ Settings
+```
+
+---
+
+## 2. PROFILER PAGE — 3-Dimension Selector
+
+### 2A. Selector Panel (sticky top)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  🔍 NOC-IS PROFILER                                                  │
+│                                                                       │
+│  ┌─── ENTITAS (Siapa) ──────────────────────────────────────────────┐│
+│  │  Level: ○ Area  ● Regional  ○ NOP  ○ TO  ○ Site                  ││
+│  │                                                                   ││
+│  │  Area: [AREA 2 ▾] → Regional: [R03 Jabar ▾]                     ││
+│  │  (cascading: pilih Area → filter Regional → dst)                  ││
+│  └───────────────────────────────────────────────────────────────────┘│
+│                                                                       │
+│  ┌─── WAKTU (Kapan) ────────────────────────────────────────────────┐│
+│  │  Granularity: ○ Jam  ○ Hari  ○ Minggu  ● Bulan  ○ Triwulan      ││
+│  │  Periode: [Jan 2025] s/d [Jul 2025]                               ││
+│  └───────────────────────────────────────────────────────────────────┘│
+│                                                                       │
+│  ┌─── GANGGUAN (Apa) ───────────────────────────────────────────────┐│
+│  │  Tipe: ● Semua  ○ Event  ○ Incident                              ││
+│  │  Severity: [■ All] [□ Critical] [□ Major] [□ Minor] [□ Low]     ││
+│  │  Fault Level: [Semua ▾]       RC Category: [Semua ▾]             ││
+│  └───────────────────────────────────────────────────────────────────┘│
+│                                                                       │
+│  [🔍 Generate Profile]  [💾 Save View]  [📋 Load Saved]  [↻ Reset]  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 2B. Selector Behavior
+
+```
+LEVEL menentukan SIAPA yang di-profil:
+  - Pilih "Regional" + "R03" → profil = Regional R03
+  - Pilih "TO" + "TO Jakarta 1" → profil = TO Jakarta 1
+  - Pilih "Site" + "JKT001" → profil = Site JKT001
+
+GRANULARITY menentukan resolusi waktu:
+  - Bulan → KPI per bulan, trend per bulan
+  - Minggu → KPI per minggu, trend per minggu
+
+GANGGUAN menentukan subset data:
+  - Semua → profil keseluruhan
+  - Critical only → profil khusus gangguan kritis
+
+Saat klik [Generate Profile]:
+  1. Validasi: entitas + periode wajib
+  2. Fetch data dari API
+  3. Render semua panel
+  4. Update URL params (shareable)
+
+State management: Zustand store (profilerStore)
+  filters, data, loading per section
+```
+
+---
+
+## 3. BREADCRUMB NAVIGATION
+
+```
+📍 AREA 2 > R03 Jabar > NOP Jakarta > TO Jakarta-1
+🕐 Jan 2025 - Jul 2025 • Bulanan
+🔧 Semua Gangguan
+
+Setiap elemen breadcrumb klikable → navigate ke level itu.
+Maintain pilihan Waktu + Gangguan saat navigate.
+```
+
+---
+
+## 4. PANEL 1: IDENTITAS & RINGKASAN
+
+### 4A. Layout
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  PROFIL: Regional R03 — Inner Jabotabek                              │
+│  Status: 🟡 PERLU PERHATIAN                         [DETERIORATING] │
+│                                                                       │
+│  ┌─── Info Card ────────────────┬─── Behavior ──────────────────────┐│
+│  │  Level: Regional             │                                    ││
+│  │  Nama: R03 Inner Jabotabek   │  📉 DETERIORATING                  ││
+│  │  Area: AREA 2                │  "SLA menurun 1.5pp/bulan          ││
+│  │  NOP: 6 aktif                │   selama 3 bulan terakhir"         ││
+│  │  TO: 24 aktif                │                                    ││
+│  │  Site: 12.450 aktif          │  Komposisi Child (6 NOP):          ││
+│  │    Diamond: 250 (2%)         │  Healthy: ████████ 3                ││
+│  │    Platinum: 480 (3.9%)      │  Improving: ██ 1                    ││
+│  │    Gold: 1.800 (14.5%)       │  Chronic: ████ 1                    ││
+│  │    Silver: 1.420 (11.4%)     │  Deteriorating: ██ 1                ││
+│  │    Bronze: 8.500 (68.3%)     │                                    ││
+│  └──────────────────────────────┴────────────────────────────────────┘│
+│                                                                       │
+│  ┌─── Ringkasan (narasi otomatis) ──────────────────────────────────┐│
+│  │  "Regional R03 memproses rata-rata 45.000 tiket/bulan dengan     ││
+│  │   SLA 89.2% (0.8pp di bawah target 90%). Tren SLA menurun       ││
+│  │   1.5pp/bulan selama 3 bulan terakhir. 1 dari 6 NOP (NOP        ││
+│  │   Jakarta) berstatus Chronic dan menyumbang 41% total tiket."    ││
+│  └──────────────────────────────────────────────────────────────────┘│
+│                                                                       │
+│  ┌─── KPI Cards ────────────────────────────────────────────────────┐│
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌─────────┐││
+│  │  │ 45.000   │ │ 89.2%    │ │ 890 min  │ │ 5.1%    │ │ 64%     │││
+│  │  │ Volume   │ │ SLA  🟡  │ │ MTTR 🟡  │ │ Esc 🟡  │ │ Auto 🟢 │││
+│  │  │ ▲5% MoM  │ │ tgt: 90% │ │ tgt: 720 │ │ thr: 3% │ │ thr: 60%│││
+│  │  └──────────┘ └──────────┘ └──────────┘ └─────────┘ └─────────┘││
+│  │  ┌──────────┐                                                     ││
+│  │  │ 18.2%    │   Rekomendasi:                                      ││
+│  │  │ Repeat🟡 │   🔴 1. SLA gap 0.8pp — fokus NOP Jakarta           ││
+│  │  │ thr: 10% │   🟡 2. MTTR bottleneck: repair 460min (52%)       ││
+│  │  └──────────┘   🟡 3. 1 NOP deteriorating — monitor ketat         ││
+│  └──────────────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 4B. Narasi Auto-Generate
+
+```python
+def generate_summary_narrative(entity, kpis, behavior, children):
+    """Template-based narasi. BUKAN AI — konsisten dan auditable."""
+    parts = []
+    
+    # Part 1: Volume & SLA
+    parts.append(
+        f"{entity.name} memproses rata-rata {kpis.avg_volume:,.0f} "
+        f"tiket/{kpis.granularity_label} dengan SLA {kpis.sla_pct:.1f}%"
+    )
+    delta = kpis.sla_pct - kpis.sla_target
+    if delta >= 0:
+        parts.append(f"({delta:.1f}pp di atas target {kpis.sla_target}%)")
+    else:
+        parts.append(f"({abs(delta):.1f}pp di bawah target {kpis.sla_target}%)")
+    
+    # Part 2: Trend
+    if kpis.sla_trend_slope is not None and abs(kpis.sla_trend_slope) > 0.5:
+        direction = "menurun" if kpis.sla_trend_slope < 0 else "membaik"
+        parts.append(
+            f"Tren SLA {direction} {abs(kpis.sla_trend_slope):.1f}pp/bulan "
+            f"selama {kpis.sla_trend_months} bulan terakhir."
+        )
+    
+    # Part 3: Problem child
+    if children and children.worst:
+        w = children.worst
+        parts.append(
+            f"{w.count} dari {children.total} {children.type_label} "
+            f"({w.name}) berstatus Chronic dan menyumbang "
+            f"{w.contribution_pct:.0f}% total tiket."
+        )
+    
+    return " ".join(parts)
+```
+
+---
+
+## 5. BEHAVIOR LABELING ENGINE (`backend/services/behavior_service.py`)
+
+### 5A. 6 Labels
+
+```
+🔴 CHRONIC       — Gangguan kronis berulang (volume tinggi 3+ bulan, SLA < 90%)
+📉 DETERIORATING — Tren memburuk (SLA slope < -0.5pp/bulan selama 2+ bulan)
+🟠 SPORADIC      — Volume rendah tapi severity tinggi (>30% Critical/Major)
+🟡 SEASONAL      — Pola musiman terdeteksi (CV<0.5, peak factor>1.3)
+📈 IMPROVING     — Tren membaik (SLA slope > +0.5pp/bulan selama 2+ bulan)
+🟢 HEALTHY       — Kondisi sehat (SLA ≥ 95% atau SLA ≥ target, volume terkendali)
+```
+
+### 5B. Classification Rules
+
+```python
+def classify_behavior(entity_level, months_data):
+    """
+    Evaluasi berurutan — pertama yang match menang.
+    Minimal 2 bulan data untuk klasifikasi.
+    """
+    avg_tickets = mean([m['total_tickets'] for m in months_data])
+    avg_sla = mean([m['sla_pct'] for m in months_data])
+    sla_slope = linear_slope([m['sla_pct'] for m in months_data])
+    
+    # Volume threshold per level:
+    # site=20, to=500, nop=2000, regional=10000, area=30000
+    high_thr = get_volume_threshold(entity_level)
+    
+    # 1. CHRONIC: tinggi 3+ bulan konsekutif + SLA < 90%
+    consecutive_high = count_consecutive_above(
+        [m['total_tickets'] for m in months_data], high_thr)
+    if consecutive_high >= 3 and avg_sla < 90:
+        return {"label": "CHRONIC", "reason": f"Volume >{high_thr}/bln, {consecutive_high} bln, SLA {avg_sla:.1f}%"}
+    
+    # 2. DETERIORATING: SLA slope < -0.5pp/bulan, 2+ bulan
+    if sla_slope < -1.5 and len(months_data) >= 3:
+        return {"label": "DETERIORATING", "reason": f"SLA turun {abs(sla_slope):.1f}pp/bln, {len(months_data)} bulan"}
+    if sla_slope < -0.5 and len(months_data) >= 2:
+        return {"label": "DETERIORATING", "reason": f"SLA turun {abs(sla_slope):.1f}pp/bln"}
+    
+    # 3. SPORADIC: volume rendah tapi >30% Critical+Major
+    crit_maj_pct = calc_critical_major_pct(months_data)
+    if avg_tickets <= high_thr * 0.3 and crit_maj_pct > 30:
+        return {"label": "SPORADIC", "reason": f"Volume rendah, {crit_maj_pct:.0f}% severity tinggi"}
+    
+    # 4. SEASONAL: CV < 0.5 dan ada peak > 1.3x average
+    cv = coefficient_of_variation([m['total_tickets'] for m in months_data])
+    if cv < 0.5 and len(months_data) >= 4:
+        peak_factor = max([m['total_tickets'] for m in months_data]) / max(avg_tickets, 1)
+        if peak_factor > 1.3:
+            return {"label": "SEASONAL", "reason": f"Peak factor {peak_factor:.1f}×"}
+    
+    # 5. IMPROVING: SLA slope > +0.5pp/bulan
+    if sla_slope > 0.5 and len(months_data) >= 2:
+        return {"label": "IMPROVING", "reason": f"SLA naik {sla_slope:.1f}pp/bln"}
+    
+    # 6. HEALTHY
+    if avg_sla >= 95 or (avg_sla >= 90 and avg_tickets <= high_thr * 0.5):
+        return {"label": "HEALTHY", "reason": f"SLA {avg_sla:.1f}%"}
+    
+    # FALLBACK
+    if avg_sla >= 90:
+        return {"label": "HEALTHY", "reason": f"SLA memenuhi target"}
+    else:
+        return {"label": "DETERIORATING", "reason": f"SLA {avg_sla:.1f}% di bawah target"}
+```
+
+---
+
+## 6. KPI INTERPRETATION RULES
+
+### 6A. SLA Compliance
+
+```
+≥ target         → 🟢 good     "Memenuhi target"
+≥ target-2pp     → 🟡 warning  "Mendekati batas, selisih {delta}pp"
+≥ target-5pp     → 🟠 alert    "Di bawah target {delta}pp, perlu tindakan"
+< target-5pp     → 🔴 critical "Kritis, jauh di bawah target {delta}pp"
+```
+
+### 6B. MTTR (minutes)
+
+```
+≤ 240  (4j)      → 🟢 good     "Baik"
+≤ 720  (12j)     → 🟡 warning  "Perlu perhatian"
+  + decomposition: "Bottleneck: {longest_comp} ({val}min, {pct}%)"
+≤ 1440 (24j)     → 🟠 alert    "Lambat"
+> 1440            → 🔴 critical "Sangat lambat, investigasi proses perbaikan"
+```
+
+### 6C. Escalation Rate
+
+```
+≤ 3%             → 🟢 good     "Terkendali"
+≤ 7%             → 🟡 warning  "Di atas normal (3%)"
+> 7%             → 🔴 critical "Tinggi, review kompetensi/kompleksitas"
+```
+
+### 6D. Auto Resolve Rate
+
+```
+≥ 60%            → 🟢 good     "Otomasi efektif"
+≥ 40%            → 🟡 warning  "Ruang peningkatan otomasi"
+< 40%            → 🟠 alert    "Rendah, banyak manual"
+```
+
+### 6E. Repeat Incident
+
+```
+≤ 10%            → 🟢 good     "Minimal"
+≤ 25%            → 🟡 warning  "RC perlu ditinjau"
+> 25%            → 🔴 critical "Tinggi — root cause belum terselesaikan"
+```
+
+### 6F. Volume (kontekstual, MoM change)
+
+```
+change > +10%    → 🟡 warning  "Naik signifikan, periksa insiden massal"
+|change| ≤ 10%   → ⚪ neutral  "Stabil"
+change < -10%    → 🟢 good     "Menurun"
+```
+
+### 6G. KPI Card Component (React)
+
+```jsx
+<KpiCard
+  label="SLA Compliance"
+  value={89.2} unit="%" target={90.0}
+  status="warning"
+  trend="-0.8pp vs target"
+  onClick={() => scrollToDetail('sla')}
+/>
+// Warna: good=green-50/500, warning=yellow, alert=orange, critical=red
+```
+
+---
+
+## 7. PANEL 5: CHILD ENTITIES TABLE
+
+### 7A. Layout
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Child Entities: 6 NOP dalam R03                    [Sort: Risk ▾]  │
+│  ┌────────────┬───────┬───────┬────────┬───────┬───────┬──────────┐ │
+│  │ NOP        │ Vol   │ SLA % │ MTTR   │ Risk  │ Trend │ Behavior │ │
+│  ├────────────┼───────┼───────┼────────┼───────┼───────┼──────────┤ │
+│  │ Jakarta    │ 18.5K │ 87.5% │ 1120m  │ 🔴 85 │ 📉    │ Chronic  │ │
+│  │ Bandung    │ 12.3K │ 90.1% │ 780m   │ 🟡 62 │ ─     │ Healthy  │ │
+│  │ Bekasi     │  8.2K │ 89.8% │ 920m   │ 🟡 58 │ 📉    │ Deterior │ │
+│  │ Bogor      │  6.2K │ 91.5% │ 650m   │ 🟢 35 │ 📈    │ Improving│ │
+│  │ Tangerang  │  5.8K │ 92.0% │ 580m   │ 🟢 28 │ ─     │ Healthy  │ │
+│  │ Depok      │  4.0K │ 93.2% │ 520m   │ 🟢 22 │ 📈    │ Healthy  │ │
+│  └────────────┴───────┴───────┴────────┴───────┴───────┴──────────┘ │
+│                                                                       │
+│  ── Narasi ─────────────────────────────────────────────────────────│
+│  "NOP Jakarta menyumbang 41% tiket R03 dan satu-satunya Chronic.    │
+│   Jika SLA Jakarta naik dari 87.5% ke median 90.1%, SLA R03         │
+│   keseluruhan naik ~1.1pp."                                         │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 7B. Sort, Drill-down, Pagination
+
+```
+Sort: Risk(default) | SLA | MTTR | Volume | Nama
+Klik row → navigate profiler ke child entity (maintain waktu+gangguan)
+Jika child = Site → server-side pagination (20/page)
+
+Child level logic:
+  Area → Regional, Regional → NOP, NOP → TO, TO → Site
+  Site → TIDAK ada child → tampilkan ticket list instead
+```
+
+---
+
+## 8. PEER RANKING
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Peer Ranking: R03 di antara 13 Regional               KPI: [SLA ▾]│
+│                                                                       │
+│  R09 ████████████████ 94.5%                                          │
+│  R12 ███████████████░ 93.8%                                          │
+│  ...                                                                  │
+│ ►R03 ██████████░░░░░░ 89.2%  ← rank 8/13 (kuartil bawah)            │
+│  ...                                                                  │
+│  R05 ███████░░░░░░░░░ 84.0%                                          │
+│                                                                       │
+│  "R03 berada di peringkat 8 dari 13 Regional (kuartil bawah).        │
+│   SLA 89.2% berada 1.0pp di bawah median peer (90.2%)."             │
+└──────────────────────────────────────────────────────────────────────┘
+
+Rules:
+  percentile >= 75 → "🏆 Kuartil atas — 25% terbaik"
+  percentile >= 50 → "Di atas median peer"
+  percentile >= 25 → "Di bawah median — kuartil ketiga"
+  percentile < 25  → "⚠️ Kuartil bawah — 25% terendah"
+  rank == 1        → "🥇 Peringkat terbaik"
+  rank == total    → "🔴 Peringkat terendah"
+```
+
+---
+
+## 9. RECOMMENDATION ENGINE
+
+```python
+def generate_recommendations(kpis, behavior, peer, children) -> list:
+    """Max 5 rekomendasi, sorted by priority (critical first)."""
+    recs = []
+    
+    # SLA gap
+    if kpis.sla_pct < kpis.sla_target:
+        delta = kpis.sla_target - kpis.sla_pct
+        recs.append({"priority": "critical" if delta > 5 else "warning",
+            "icon": "🔴" if delta > 5 else "🟡",
+            "text": f"SLA gap {delta:.1f}pp — fokus perbaikan pada {children.worst.name if children else 'entitas terbawah'}."})
+    
+    # MTTR bottleneck
+    if kpis.avg_mttr_min > 720:
+        longest = max(kpis.mttr_decomposition.items(), key=lambda x: x[1])
+        recs.append({"priority": "warning", "icon": "🟡",
+            "text": f"MTTR {kpis.avg_mttr_min:.0f}m — bottleneck: {longest[0]} ({longest[1]:.0f}m, {longest[1]/kpis.avg_mttr_min*100:.0f}%)."})
+    
+    # Deteriorating children
+    if children:
+        n_det = sum(1 for c in children.list if c.behavior == "DETERIORATING")
+        if n_det > 0:
+            recs.append({"priority": "warning", "icon": "🟡",
+                "text": f"{n_det} {children.type_label} memburuk — monitor dan intervensi."})
+    
+    # High escalation
+    if kpis.escalation_pct > 7:
+        recs.append({"priority": "critical", "icon": "🔴",
+            "text": f"Eskalasi {kpis.escalation_pct:.1f}% (>7%) — review kompetensi/kompleksitas."})
+    
+    # High repeat
+    if kpis.repeat_pct > 25:
+        recs.append({"priority": "critical", "icon": "🔴",
+            "text": f"Repeat {kpis.repeat_pct:.1f}% — RC belum solved, RCA mendalam diperlukan."})
+    
+    recs.sort(key=lambda r: {"critical": 0, "warning": 1, "info": 2}.get(r['priority'], 9))
+    return recs[:5]
+```
+
+---
+
+## 10. API ENDPOINTS
+
+### 10A. Profiler Generate
+
+```
+POST /api/profiler/generate
+  ← Body: {entity_level, entity_id, granularity, date_from, date_to,
+            type_ticket, severities, fault_level, rc_category}
+  → Return: {
+      identity: {level, id, name, parent_chain, child_counts, site_composition},
+      kpis: {volume, sla_pct, avg_mttr_min, escalation_pct, auto_resolve_pct, repeat_pct},
+      behavior: {label, icon, color, reason, narrative},
+      child_composition: {total, type_label, by_behavior},
+      summary_narrative: "...",
+      recommendations: [{priority, icon, text}, ...]
+    }
+```
+
+### 10B. Child Entities
+
+```
+GET /api/profiler/children
+  ← Query: ?entity_level=regional&entity_id=R03&date_from=&date_to=
+            &sort=risk_score&order=desc&page=1&per_page=20
+            &type_ticket=&severities=&fault_level=&rc_category=
+  → Return: {data: [{entity_id, name, total_tickets, sla_pct, avg_mttr_min,
+              escalation_pct, auto_resolve_pct, repeat_pct, risk_score,
+              trend_direction, behavior_label, behavior_icon}, ...],
+             total, page, per_page, narrative}
+```
+
+### 10C. Peer Ranking
+
+```
+GET /api/profiler/peer-ranking
+  ← Query: ?entity_level=regional&entity_id=R03&kpi=sla_pct
+            &date_from=&date_to=
+  → Return: {peers: [{id, name, value, is_current}, ...],
+             current_rank, total, percentile, median, target, narrative}
+```
+
+---
+
+## 11. DATA SOURCE STRATEGY
+
+```
+KRITIS — query yang BENAR:
+
+KPI Cards       → summary_monthly (pre-aggregated, instant)
+Behavior        → summary_monthly per-bulan series → Python calc
+Children table  → summary_monthly per child GROUP BY
+Peer ranking    → summary_monthly per peer GROUP BY
+Repeat incident → noc_tickets (perlu detail per-tiket, heavy query)
+MTTR decompose  → noc_tickets (perlu per-tiket breakdown)
+
+JANGAN query noc_tickets untuk KPI overview. Selalu summary_monthly dulu.
+noc_tickets hanya untuk detail yang tidak bisa pre-aggregated.
+```
+
+---
+
+## 12. REPEAT INCIDENT DETECTION
+
+```sql
+-- Repeat = site dengan >1 tiket dalam 7 hari untuk fault level yang sama
+WITH ticket_gaps AS (
+  SELECT site_id, fault_level, occured_time,
+    LAG(occured_time) OVER (
+      PARTITION BY site_id, fault_level ORDER BY occured_time
+    ) as prev_time
+  FROM noc_tickets
+  WHERE calc_regional_id = 'R03'
+    AND calc_year_month BETWEEN '2025-01' AND '2025-07'
+)
+SELECT COUNT(*) as repeat_count
+FROM ticket_gaps
+WHERE EXTRACT(EPOCH FROM (occured_time - prev_time)) / 3600 < 168;
+-- 168 hours = 7 days
+
+-- repeat_pct = repeat_count / total_tickets * 100
+```
+
+---
+
+## CATATAN PENTING
+
+1. **Performance**: KPI Cards < 1 detik. Gunakan summary_monthly.
+2. **Interpretation = rule-based**: BUKAN AI/LLM. Template + variabel. Instant.
+3. **URL state**: `/profiler?level=regional&id=R03&gran=monthly&from=2025-01&to=2025-07`
+4. **Child pagination**: TO → Site = ratusan. Server-side pagination wajib.
+5. **Light mode**: White/gray-50 background. Warna status: green/yellow/orange/red.
+6. **Prompt berikutnya**: 7=Temporal(trend,heatmap), 8=Gangguan(pareto,cross-dim), 9=Prediktif(risk,forecast)
+
+---
+
+## VALIDASI SETELAH SELESAI
+
+- [ ] Menu "Profiler" di sidebar
+- [ ] 3-Dimension Selector (entity + waktu + gangguan)
+- [ ] Cascading dropdown: Area → Regional → NOP → TO → Site
+- [ ] Breadcrumb navigation: klik level → navigate
+- [ ] Panel 1: Info card + Behavior badge (6 jenis label)
+- [ ] Narasi ringkasan auto-generated (template-based)
+- [ ] 6 KPI Cards: Volume, SLA, MTTR, Escalation, Auto-resolve, Repeat
+- [ ] KPI status color: green/yellow/orange/red sesuai threshold
+- [ ] KPI narasi interpretasi otomatis
+- [ ] Child entities table: list, sort by risk/SLA/MTTR/volume
+- [ ] Drill-down: klik child → navigate ke profil child
+- [ ] Site-level children: paginated (server-side, 20/page)
+- [ ] Peer ranking: horizontal bar, highlight current, narasi percentile
+- [ ] Recommendations: max 5, sorted by priority
+- [ ] POST /api/profiler/generate return data lengkap
+- [ ] URL params update saat generate
+- [ ] Data dari summary_monthly (bukan noc_tickets) untuk KPIs
