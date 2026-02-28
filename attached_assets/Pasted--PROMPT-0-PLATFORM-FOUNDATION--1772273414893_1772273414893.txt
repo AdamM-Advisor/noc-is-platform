@@ -1,0 +1,422 @@
+# ============================================================
+
+# PROMPT 0 — PLATFORM FOUNDATION
+
+# NOC-IS Analytics Platform v1.0
+
+# Author: Dr. Adam M.
+
+# ============================================================
+
+#
+
+#
+
+#
+
+# HASIL YANG DIHARAPKAN:
+
+# ✅ Project structure (FastAPI + React + DuckDB)
+
+# ✅ DuckDB connection manager dengan memory limit
+
+# ✅ Chunked upload infrastructure (5 MB/chunk)
+
+# ✅ Auto-backup mechanism (retain 3 backup terakhir)
+
+# ✅ Directory structure & persistence guard
+
+# ✅ Loading states & error handling global
+
+# ✅ Danger Zone UI pattern
+
+# ✅ Health check endpoint
+
+# ============================================================
+
+Bangun fondasi untuk **NOC-IS Analytics Platform** — platform analitik NOC (Network Operations Center) berbasis web. Ini adalah Prompt 0 dari 13 prompt yang akan dijalankan bertahap.
+
+* * *
+
+## TECH STACK
+
+    Backend  : Python 3.11+ / FastAPI
+    Frontend : React 18 + Vite + Recharts + Zustand
+    Database : DuckDB (file-based OLAP, persistent)
+    Styling  : Tailwind CSS (atau CSS modules) — LIGHT MODE, warna profesional
+
+* * *
+
+## PROJECT STRUCTURE
+
+Buat project structure berikut:
+
+    /project/
+    ├── backend/
+    │   ├── main.py                  ← FastAPI app entry point
+    │   ├── config.py                ← App config (paths, limits, constants)
+    │   ├── database.py              ← DuckDB connection manager
+    │   ├── routers/
+    │   │   ├── __init__.py
+    │   │   ├── health.py            ← Health check endpoints
+    │   │   ├── upload.py            ← Chunked upload endpoints
+    │   │   └── admin.py             ← Backup, restore, danger zone
+    │   ├── services/
+    │   │   ├── __init__.py
+    │   │   ├── backup_service.py    ← Auto-backup logic
+    │   │   └── upload_service.py    ← Chunk assembly + basic validation
+    │   └── requirements.txt
+    │
+    ├── frontend/
+    │   ├── src/
+    │   │   ├── App.jsx              ← Main app + routing
+    │   │   ├── main.jsx             ← Entry point
+    │   │   ├── api/
+    │   │   │   └── client.js        ← Axios instance + error interceptor
+    │   │   ├── components/
+    │   │   │   ├── Layout.jsx       ← Sidebar + header + main content
+    │   │   │   ├── LoadingWrapper.jsx ← Universal loading/error state
+    │   │   │   └── DangerZone.jsx   ← Danger zone UI pattern
+    │   │   ├── pages/
+    │   │   │   ├── Dashboard.jsx    ← Placeholder (akan diisi Prompt berikutnya)
+    │   │   │   ├── UploadPage.jsx   ← Upload UI dengan chunked progress
+    │   │   │   └── SettingsPage.jsx ← Settings + backup + danger zone
+    │   │   └── stores/
+    │   │       └── cacheStore.js    ← Zustand cache store
+    │   ├── index.html
+    │   ├── vite.config.js
+    │   └── package.json
+    │
+    ├── data/                        ← DATABASE DIRECTORY (persistent)
+    │   ├── noc_analytics.duckdb     ← Database utama (akan dibuat otomatis)
+    │   └── backups/                 ← Auto-backup directory
+    │       └── .gitkeep
+    │
+    ├── uploads/                     ← Temp upload directory
+    │   └── .gitkeep
+    │
+    ├── temp_chunks/                 ← Temp chunks directory
+    │   └── .gitkeep
+    │
+    └── exports/                     ← Generated reports output
+        └── .gitkeep
+
+* * *
+
+## 1. BACKEND CONFIG (`config.py`)
+
+    # Semua path dan konstanta di satu tempat
+    import os
+    
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    DB_PATH = os.path.join(DATA_DIR, "noc_analytics.duckdb")
+    BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+    UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+    CHUNK_DIR = os.path.join(BASE_DIR, "temp_chunks")
+    EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+    
+    # Buat directory jika belum ada
+    for d in [DATA_DIR, BACKUP_DIR, UPLOAD_DIR, CHUNK_DIR, EXPORT_DIR]:
+        os.makedirs(d, exist_ok=True)
+    
+    # Limits
+    DUCKDB_MEMORY_LIMIT = "512MB"       # Sesuaikan dengan RAM Replit
+    DUCKDB_THREADS = 2                   # Replit shared CPU
+    CHUNK_SIZE_MB = 5                    # Max chunk size untuk upload
+    MAX_BACKUP_COUNT = 3                 # Retain 3 backup terakhir
+    SINGLE_UPLOAD_LIMIT_MB = 10         # Di atas ini → chunked upload
+
+* * *
+
+## 2. DUCKDB CONNECTION MANAGER (`database.py`)
+
+Implementasikan DuckDB connection manager dengan spesifikasi:
+
+    KRITIS — DuckDB single-writer constraint:
+    • Hanya 1 write connection boleh aktif sekaligus
+    • Multiple read connections boleh paralel
+    • Gunakan threading.Lock() untuk write operations
+    • SELALU set memory_limit dan threads saat connect
+    
+    Pattern:
+      get_connection()    → Read-only connection (bisa banyak)
+      get_write_connection() → Write connection dengan lock (hanya 1)
+    
+      Setiap connection HARUS set:
+        SET memory_limit='{DUCKDB_MEMORY_LIMIT}';
+        SET threads={DUCKDB_THREADS};
+    
+      Connection HARUS di-close setelah digunakan.
+      Gunakan context manager pattern.
+
+* * *
+
+## 3. CHUNKED UPLOAD (`upload.py` + `upload_service.py` + `UploadPage.jsx`)
+
+### Backend Endpoints:
+
+    POST /api/upload/single
+      ← File < 10 MB langsung upload
+      → Simpan ke UPLOAD_DIR, return {filename, size, path}
+    
+    POST /api/upload/chunk
+      ← Headers: X-Upload-Id, X-Chunk-Index, X-Total-Chunks, X-Filename
+      ← Body: binary chunk (max 5 MB)
+      → Simpan chunk ke CHUNK_DIR/{upload_id}/chunk_{index}
+    
+    POST /api/upload/chunk/complete
+      ← Body: {upload_id, filename, total_chunks}
+      → Reassemble chunks → simpan ke UPLOAD_DIR
+      → Hapus temp chunks
+      → Return {filename, size, path}
+    
+    GET /api/upload/chunk/status/{upload_id}
+      → Return {received_chunks, total_chunks, is_complete}
+
+### Frontend Upload UI (`UploadPage.jsx`):
+
+    UI Requirements:
+    1. Drag-and-drop zone + file picker button
+    2. Support file types: .xlsx, .csv, .parquet
+    3. Auto-detect: jika file < 10MB → single upload
+                     jika file ≥ 10MB → chunked upload (5MB per chunk)
+    4. Progress bar yang menunjukkan:
+       - Single: upload percentage
+       - Chunked: "Chunk 3/8 (37.5%)" + overall percentage bar
+    5. Status messages:
+       - "Mengunggah..." → "Memproses..." → "Selesai ✓" / "Gagal ✗"
+    6. Retry button jika gagal (per chunk untuk chunked upload)
+    7. Upload history list (session, belum perlu persist)
+    
+    CATATAN: Di prompt ini, upload hanya menyimpan file.
+    Processing (parsing, insert ke DB) akan ditambahkan di Prompt 2.
+
+* * *
+
+## 4. AUTO-BACKUP MECHANISM (`backup_service.py` + `admin.py`)
+
+    TRIGGER BACKUP:
+      • Otomatis SEBELUM setiap import data (akan dipanggil dari Prompt 2)
+      • Manual dari Settings page (tombol "Backup Sekarang")
+    
+    MEKANISME:
+      1. Copy file data/noc_analytics.duckdb 
+         → data/backups/noc_analytics_{YYYYMMDD_HHMMSS}.duckdb
+      2. Jika jumlah backup > MAX_BACKUP_COUNT (3):
+         → Hapus backup TERLAMA
+      3. Return: {backup_path, size_mb, timestamp, total_backups}
+    
+    RESTORE:
+      POST /api/admin/restore
+      ← Body: {backup_filename}
+      → Copy backup → timpa database utama
+      → Restart DuckDB connection
+      → Return: {restored_from, timestamp}
+    
+    ENDPOINTS:
+      GET  /api/admin/backups        → List semua backup {name, size, date}
+      POST /api/admin/backup         → Trigger manual backup
+      POST /api/admin/restore        → Restore dari backup tertentu
+      GET  /api/admin/db-info        → {db_size_mb, table_count, row_counts}
+
+* * *
+
+## 5. HEALTH CHECK (`health.py`)
+
+    GET /api/health
+    → {
+        status: "healthy" | "degraded" | "error",
+        database: {connected: bool, size_mb: float, path: string},
+        memory: {used_mb: float, limit: string},
+        disk: {data_dir_mb: float, backup_count: int},
+        uptime_seconds: float,
+        version: "1.0.0"
+      }
+
+* * *
+
+## 6. FRONTEND FOUNDATION
+
+### Layout (`Layout.jsx`):
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  NOC-IS Analytics Platform               Dr. Adam M.    ⚙️  │
+    ├────────────┬─────────────────────────────────────────────────┤
+    │            │                                                 │
+    │  SIDEBAR   │  MAIN CONTENT                                   │
+    │            │                                                 │
+    │  📊 Dashboard  │  (React Router outlet)                     │
+    │  📤 Upload     │                                             │
+    │  ⚙️ Settings   │                                             │
+    │            │                                                 │
+    │  ────────  │                                                 │
+    │  ℹ️ v1.0   │                                                 │
+    │            │                                                 │
+    └────────────┴─────────────────────────────────────────────────┘
+    
+    WARNA: Light mode. Navy (#1B2A4A) untuk sidebar, putih untuk content.
+    Sidebar collapsible di mobile.
+    Active page: highlight dengan accent color.
+
+### LoadingWrapper (`LoadingWrapper.jsx`):
+
+    // Komponen universal yang membungkus setiap page/section
+    // Props: loading, error, children, onRetry
+    
+    // State: LOADING
+    // → Skeleton placeholder atau spinner + pesan
+    // → "Memuat data..."
+    
+    // State: ERROR  
+    // → Pesan error yang jelas + tombol Retry
+    // → "Gagal memuat data. [Coba Lagi]"
+    
+    // State: EMPTY
+    // → Pesan jika data kosong
+    // → "Belum ada data. Upload data terlebih dahulu."
+    
+    // State: SUCCESS
+    // → Render children
+
+### DangerZone (`DangerZone.jsx`):
+
+    Digunakan di Settings page untuk aksi destructive:
+    
+    ┌──────────────────────────────────────────────────────────┐
+    │  ⚠️ Zona Berbahaya                                       │
+    │                                                           │
+    │  ┌─────────────────────────────────────────────────────┐ │
+    │  │  Hapus Semua Data                                    │ │
+    │  │  Menghapus seluruh data tiket dan summary.          │ │
+    │  │  Master data TIDAK terhapus.                         │ │
+    │  │                                     [Hapus Data]     │ │
+    │  └─────────────────────────────────────────────────────┘ │
+    │                                                           │
+    │  ┌─────────────────────────────────────────────────────┐ │
+    │  │  Reset Database                                      │ │
+    │  │  Menghapus SELURUH database termasuk master data.   │ │
+    │  │  Backup otomatis dibuat sebelum reset.               │ │
+    │  │                                     [Reset Database]  │ │
+    │  └─────────────────────────────────────────────────────┘ │
+    └──────────────────────────────────────────────────────────┘
+    
+    Setiap tombol destructive:
+    1. Klik pertama → muncul konfirmasi: "Ketik HAPUS untuk konfirmasi"
+    2. User harus ketik teks konfirmasi
+    3. Tombol baru aktif setelah teks benar
+    4. Sebelum eksekusi → auto-backup dulu
+
+### Zustand Cache Store (`cacheStore.js`):
+
+    // Cache store untuk menghindari re-fetch saat navigasi
+    // Key: "{page}_{filter_hash}"
+    // Value: {data, timestamp}
+    // TTL: 5 menit (300000 ms)
+    // 
+    // Methods:
+    //   get(key) → data jika belum expired, null jika expired
+    //   set(key, data)
+    //   invalidate(key) → hapus 1 key
+    //   clearAll() → hapus semua (dipanggil setelah upload data baru)
+    //   getAge(key) → berapa ms sejak di-cache
+
+* * *
+
+## 7. SETTINGS PAGE (`SettingsPage.jsx`)
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Settings                                                     │
+    │                                                               │
+    │  📦 Database Info                                             │
+    │  ┌──────────────────────────────────────────────────────────┐│
+    │  │  Database size: 0 MB                                      ││
+    │  │  Tables: 0                                                ││
+    │  │  Status: ● Healthy                                        ││
+    │  └──────────────────────────────────────────────────────────┘│
+    │                                                               │
+    │  💾 Backup & Restore                                          │
+    │  ┌──────────────────────────────────────────────────────────┐│
+    │  │  [Backup Sekarang]                                        ││
+    │  │                                                           ││
+    │  │  Backup tersedia:                                         ││
+    │  │  ┌─────────────────────────────────────────────────────┐ ││
+    │  │  │  noc_analytics_20260228_100000.duckdb  │ 0 MB │ [↩️] │ ││
+    │  │  │  noc_analytics_20260227_080000.duckdb  │ 0 MB │ [↩️] │ ││
+    │  │  └─────────────────────────────────────────────────────┘ ││
+    │  └──────────────────────────────────────────────────────────┘│
+    │                                                               │
+    │  ⚠️ Zona Berbahaya                                            │
+    │  (DangerZone component)                                       │
+    └──────────────────────────────────────────────────────────────┘
+
+* * *
+
+## 8. API CLIENT (`client.js`)
+
+    // Axios instance dengan:
+    // - baseURL: '/api' (proxy dari Vite ke FastAPI)
+    // - timeout: 60 detik (default), 300 detik (upload)
+    // - Error interceptor:
+    //   → 413: "File terlalu besar. Gunakan chunked upload."
+    //   → 500: "Server error. Coba lagi."
+    //   → Network error: "Tidak dapat terhubung ke server."
+    //   → Tampilkan toast notification untuk setiap error
+
+* * *
+
+## 9. VITE PROXY CONFIG
+
+    // vite.config.js
+    // Proxy /api/* ke http://localhost:8000
+    // Ini agar frontend dan backend bisa jalan di Replit
+
+* * *
+
+## 10. REQUIREMENTS
+
+### Backend (`requirements.txt`):
+
+    fastapi
+    uvicorn[standard]
+    duckdb
+    python-multipart
+    aiofiles
+
+### Frontend (`package.json` dependencies):
+
+    react, react-dom, react-router-dom
+    axios
+    zustand
+    recharts (belum dipakai, tapi install sekarang)
+    tailwindcss (atau styling pilihan)
+    lucide-react (icons)
+
+* * *
+
+## CATATAN PENTING
+
+1. **Semua warna LIGHT MODE** — background putih, teks gelap, sidebar navy
+2. **Footer setiap page**: "NOC-IS Analytics Platform v1.0 — Dr. Adam M."
+3. **Responsive**: sidebar collapse di layar kecil
+4. **Dashboard page**: untuk sekarang hanya placeholder dengan pesan:"Platform siap. Upload data untuk memulai analisis."
+5. **JANGAN** buat tabel database apapun di prompt ini — schema akan dibuat di Prompt 1
+6. **JANGAN** buat logic processing data — hanya infrastruktur upload (simpan file)
+7. Backend harus berjalan di port 8000, frontend di port 5173 (Vite default)
+8. Pastikan DuckDB database file PERSISTENT — jangan di /tmp
+
+* * *
+
+## VALIDASI SETELAH SELESAI
+
+Setelah build, pastikan:
+
+* [ ] `GET /api/health` mengembalikan status "healthy"
+* [ ] Upload file kecil (<10MB) berhasil tersimpan
+* [ ] Upload file besar (>10MB) berhasil via chunked upload
+* [ ] Backup manual berfungsi
+* [ ] Restore dari backup berfungsi
+* [ ] Settings page menampilkan info database
+* [ ] Danger Zone meminta konfirmasi sebelum aksi destructive
+* [ ] Sidebar navigation berfungsi antar halaman
+* [ ] LoadingWrapper menampilkan loading/error/empty state
