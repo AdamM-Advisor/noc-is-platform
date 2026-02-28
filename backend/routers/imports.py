@@ -52,23 +52,26 @@ async def delete_import(import_id: int):
     try:
         with get_connection() as conn:
             row = conn.execute(
-                "SELECT file_type, period FROM import_logs WHERE id = ?", [import_id]
+                "SELECT file_type, period, status, rows_imported FROM import_logs WHERE id = ?", [import_id]
             ).fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail="Import not found")
 
-        file_type, period = row
+        file_type, period, status, rows_imported = row
 
-        from backend.services.backup_service import create_backup
-        try:
-            create_backup()
-        except Exception:
-            pass
+        is_ticket_type = file_type not in ("site_master",)
+        has_data = status == "completed" and (rows_imported or 0) > 0 and period
 
         deleted = 0
-        with get_write_connection() as conn:
-            if period:
+        if is_ticket_type and has_data:
+            from backend.services.backup_service import create_backup
+            try:
+                create_backup()
+            except Exception:
+                pass
+
+            with get_write_connection() as conn:
                 result = conn.execute("""
                     SELECT COUNT(*) FROM noc_tickets
                     WHERE calc_source = ? AND calc_year_month = ?
@@ -78,20 +81,16 @@ async def delete_import(import_id: int):
                     DELETE FROM noc_tickets
                     WHERE calc_source = ? AND calc_year_month = ?
                 """, [file_type, period])
-            else:
-                result = conn.execute("""
-                    SELECT COUNT(*) FROM noc_tickets WHERE calc_source = ?
-                """, [file_type]).fetchone()
-                deleted = result[0]
-                conn.execute("DELETE FROM noc_tickets WHERE calc_source = ?", [file_type])
+                conn.execute("DELETE FROM import_logs WHERE id = ?", [import_id])
+        else:
+            with get_write_connection() as conn:
+                conn.execute("DELETE FROM import_logs WHERE id = ?", [import_id])
 
-            conn.execute("DELETE FROM import_logs WHERE id = ?", [import_id])
-
-        if period:
+        if has_data and period:
             from backend.services.summary_service import refresh_summaries
             refresh_summaries([period])
 
-        return {"deleted_rows": deleted, "summaries_refreshed": [period] if period else []}
+        return {"deleted_rows": deleted, "summaries_refreshed": [period] if has_data and period else []}
     except HTTPException:
         raise
     except Exception as e:

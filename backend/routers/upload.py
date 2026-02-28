@@ -249,6 +249,6 @@ def _log_site_master_import(filename, file_path, result):
             VALUES (?, ?, 'site_master', ?, NULL, ?, ?, ?, 0, ?, ?, 'completed', FALSE)
         """, [
             max_id + 1, filename, file_size_mb,
-            result["total"], result["inserted"], result["updated"],
+            result["total"], result["inserted"] + result["updated"], 0,
             orphan_count, result["duration_sec"],
         ])
