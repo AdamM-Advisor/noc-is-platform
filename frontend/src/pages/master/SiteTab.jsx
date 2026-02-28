@@ -1,10 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import client from '../../api/client';
-import { Search, Download, Edit, ChevronLeft, ChevronRight, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Download, Edit, ChevronLeft, ChevronRight, X, ArrowUp, ArrowDown, BarChart3, MapPin, Cpu, RefreshCw, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 
 const CLASS_OPTIONS = ['Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze'];
 const FLAG_OPTIONS = ['Site Reguler', '3T', 'USO/MP', 'Femto', 'No BTS'];
 const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE'];
+
+const CLASS_COLORS = {
+  Diamond: 'bg-purple-100 text-purple-700',
+  Platinum: 'bg-blue-100 text-blue-700',
+  Gold: 'bg-yellow-100 text-yellow-700',
+  Silver: 'bg-gray-200 text-gray-700',
+  Bronze: 'bg-orange-100 text-orange-700',
+};
+
+const CLASS_BAR_COLORS = {
+  Diamond: 'bg-purple-500',
+  Platinum: 'bg-blue-500',
+  Gold: 'bg-yellow-500',
+  Silver: 'bg-gray-400',
+  Bronze: 'bg-orange-500',
+};
 
 function enrichPreview(siteClass, siteFlag) {
   const cls = siteClass;
@@ -55,6 +71,23 @@ function enrichPreview(siteClass, siteFlag) {
   return { site_category, site_sub_class, est_technology, est_power, complexity_level, strategy_focus };
 }
 
+function MiniBarChart({ data, colorMap }) {
+  const maxVal = Math.max(...data.map(d => d.count), 1);
+  return (
+    <div className="flex items-end gap-1 h-10">
+      {data.map(d => (
+        <div key={d.label} className="flex flex-col items-center gap-0.5" title={`${d.label}: ${d.count}`}>
+          <div
+            className={`w-4 rounded-t ${colorMap[d.label] || 'bg-gray-400'}`}
+            style={{ height: `${Math.max((d.count / maxVal) * 32, 2)}px` }}
+          />
+          <span className="text-[9px] text-gray-500 leading-none">{d.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SiteTab() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -83,7 +116,35 @@ function SiteTab() {
   const [editEnrichment, setEditEnrichment] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const [enrichOpen, setEnrichOpen] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcResult, setRecalcResult] = useState(null);
+
+  const coordFileRef = useRef(null);
+  const equipFileRef = useRef(null);
+  const enrichedFileRef = useRef(null);
+
   const perPage = 50;
+
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res = await client.get('/master/site/stats');
+      setStats(res.data);
+    } catch {
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   useEffect(() => {
     client.get('/master/area').then(r => setAreas(r.data)).catch(() => {});
@@ -243,6 +304,59 @@ function SiteTab() {
     }
   };
 
+  const handleBulkUpload = async (file, updateType) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await client.post(`/master/site/bulk-update/upload?update_type=${updateType}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setUploadResult(res.data);
+      fetchStats();
+      fetchSites();
+    } catch (err) {
+      setUploadResult({ error: err.response?.data?.detail || 'Upload gagal' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleEnrichedImport = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await client.post('/master/site/import-enriched', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setUploadResult(res.data);
+      fetchStats();
+      fetchSites();
+    } catch (err) {
+      setUploadResult({ error: err.response?.data?.detail || 'Upload gagal' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRecalculate = async () => {
+    setRecalculating(true);
+    setRecalcResult(null);
+    try {
+      const res = await client.post('/master/site/recalculate-derived');
+      setRecalcResult(res.data);
+      fetchStats();
+    } catch {
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   const startItem = (page - 1) * perPage + 1;
   const endItem = Math.min(page * perPage, total);
 
@@ -284,8 +398,110 @@ function SiteTab() {
     </th>
   );
 
+  const classDistribution = stats?.per_class ? Object.entries(stats.per_class).map(([label, count]) => ({ label, count })) : [];
+  const flagDistribution = stats?.per_flag ? Object.entries(stats.per_flag).map(([label, count]) => ({ label, count })) : [];
+  const totalActive = stats?.active || 0;
+  const totalSites = stats?.total || 0;
+
+  const coordCount = stats?.enrichment?.with_coordinates || 0;
+  const equipCount = stats?.enrichment?.with_equipment || 0;
+  const coordPct = totalActive > 0 ? ((coordCount / totalActive) * 100).toFixed(1) : 0;
+  const equipPct = totalActive > 0 ? ((equipCount / totalActive) * 100).toFixed(1) : 0;
+
+  const FLAG_BAR_COLORS = {
+    'Site Reguler': 'bg-emerald-500',
+    '3T': 'bg-sky-500',
+    'USO/MP': 'bg-indigo-500',
+    'Femto': 'bg-pink-500',
+    'No BTS': 'bg-gray-400',
+  };
+
   return (
     <div className="space-y-4">
+      {statsLoading ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400">Memuat statistik...</div>
+      ) : stats && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[#1B2A4A] flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Total Site</p>
+                  <p className="text-xl font-bold text-gray-800">{totalSites.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-600 flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Site Aktif</p>
+                  <p className="text-xl font-bold text-gray-800">{totalActive.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Per Class</p>
+                  <MiniBarChart data={classDistribution} colorMap={CLASS_BAR_COLORS} />
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Per Flag</p>
+                  <MiniBarChart data={flagDistribution} colorMap={FLAG_BAR_COLORS} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Distribusi per Class</h4>
+              <div className="space-y-2">
+                {classDistribution.map(d => {
+                  const pct = totalSites > 0 ? ((d.count / totalSites) * 100).toFixed(1) : 0;
+                  return (
+                    <div key={d.label} className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium min-w-[80px] text-center ${CLASS_COLORS[d.label] || 'bg-gray-100 text-gray-600'}`}>{d.label}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className={`h-2 rounded-full ${CLASS_BAR_COLORS[d.label] || 'bg-gray-400'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-600 min-w-[80px] text-right">{d.count.toLocaleString()} ({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Distribusi per Flag</h4>
+              <div className="space-y-2">
+                {flagDistribution.map(d => {
+                  const pct = totalSites > 0 ? ((d.count / totalSites) * 100).toFixed(1) : 0;
+                  return (
+                    <div key={d.label} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-700 min-w-[80px]">{d.label}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className={`h-2 rounded-full ${FLAG_BAR_COLORS[d.label] || 'bg-gray-400'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-600 min-w-[80px] text-right">{d.count.toLocaleString()} ({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Area</label>
@@ -426,6 +642,142 @@ function SiteTab() {
           </div>
         </div>
       )}
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <button
+          onClick={() => setEnrichOpen(o => !o)}
+          className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-[#1B2A4A]" />
+            <span className="text-sm font-semibold text-[#1B2A4A]">Site Enrichment</span>
+          </div>
+          {enrichOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+        </button>
+
+        {enrichOpen && (
+          <div className="px-6 pb-6 space-y-6 border-t border-gray-200 pt-4">
+            {uploadResult && (
+              <div className={`rounded-lg p-4 text-sm ${uploadResult.error ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                {uploadResult.error ? (
+                  <p>{uploadResult.error}</p>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    {uploadResult.updated !== undefined && <span>Updated: {uploadResult.updated}</span>}
+                    {uploadResult.skipped !== undefined && <span>Skipped: {uploadResult.skipped}</span>}
+                    {uploadResult.errors !== undefined && <span>Errors: {uploadResult.errors}</span>}
+                    {uploadResult.imported !== undefined && <span>Imported: {uploadResult.imported}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-[#1B2A4A]" />
+                <h4 className="text-sm font-semibold text-gray-700">Koordinat</h4>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-600">{coordCount} / {totalActive} site memiliki koordinat ({coordPct}%)</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2.5">
+                  <div className="bg-[#1B2A4A] h-2.5 rounded-full transition-all" style={{ width: `${coordPct}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="file" ref={coordFileRef} accept=".csv" className="hidden" onChange={e => { handleBulkUpload(e.target.files[0], 'coordinates'); e.target.value = ''; }} />
+                <button
+                  onClick={() => coordFileRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 bg-[#1B2A4A] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#2a3d66] transition-colors disabled:opacity-50"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Koordinat CSV
+                </button>
+                <button
+                  onClick={() => window.open('/api/master/site/template/coordinates', '_blank')}
+                  className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Template CSV
+                </button>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500 font-mono">
+                Format: site_id, latitude, longitude
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-[#1B2A4A]" />
+                <h4 className="text-sm font-semibold text-gray-700">Equipment</h4>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-600">{equipCount} / {totalActive} site memiliki equipment ({equipPct}%)</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2.5">
+                  <div className="bg-[#1B2A4A] h-2.5 rounded-full transition-all" style={{ width: `${equipPct}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="file" ref={equipFileRef} accept=".csv" className="hidden" onChange={e => { handleBulkUpload(e.target.files[0], 'equipment'); e.target.value = ''; }} />
+                <button
+                  onClick={() => equipFileRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 bg-[#1B2A4A] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#2a3d66] transition-colors disabled:opacity-50"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Equipment CSV
+                </button>
+                <button
+                  onClick={() => window.open('/api/master/site/template/equipment', '_blank')}
+                  className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Template CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-700">Enriched Site Master Import</h4>
+              <p className="text-xs text-gray-500">Import file CSV site master yang sudah diperkaya dengan data tambahan (koordinat, equipment, dll).</p>
+              <div className="flex items-center gap-3">
+                <input type="file" ref={enrichedFileRef} accept=".csv" className="hidden" onChange={e => { handleEnrichedImport(e.target.files[0]); e.target.value = ''; }} />
+                <button
+                  onClick={() => enrichedFileRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 bg-[#1B2A4A] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#2a3d66] transition-colors disabled:opacity-50"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Enriched Site Master
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-700">Re-calculate Derived Columns</h4>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleRecalculate}
+                  disabled={recalculating}
+                  className="flex items-center gap-2 bg-[#1B2A4A] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#2a3d66] transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${recalculating ? 'animate-spin' : ''}`} />
+                  {recalculating ? 'Menghitung...' : 'Recalculate All'}
+                </button>
+              </div>
+              {recalcResult && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
+                  {recalcResult.recalculated} site dalam {recalcResult.duration_sec} detik
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {editSite && (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">

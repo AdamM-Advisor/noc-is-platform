@@ -49,12 +49,12 @@ frontend/
       DangerZone.jsx   - Danger zone UI pattern with confirmation
     pages/
       Dashboard.jsx    - Placeholder with health info
-      UploadPage.jsx   - Full processing pipeline UI (detect, process, history)
+      UploadPage.jsx   - Full processing pipeline UI + coverage matrix + data management
       MasterDataPage.jsx - 5-tab master data management
       SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
       master/
         HierarchyTab.jsx   - Tree view CRUD (Area→Regional→NOP→TO)
-        SiteTab.jsx        - Server-side paginated site list (50/pg)
+        SiteTab.jsx        - Server-side paginated site list (50/pg) + stats + enrichment panel
         SlaTargetTab.jsx   - SLA target rules + resolver tester
         ThresholdTab.jsx   - Inline-edit threshold params by category
         DataQualityTab.jsx - Data quality dashboard + orphan management
@@ -126,8 +126,12 @@ exports/               - Generated reports
 - `DELETE /api/imports/{id}` - Delete import + related data
 - `GET /api/orphans` - List unresolved orphans
 - `PUT /api/orphans/{id}/resolve` - Resolve orphan + remap tickets
-- `DELETE /api/data/tickets` - Granular delete (by period/source)
+- `GET /api/data/coverage` - Coverage matrix (year_month × source with counts)
+- `GET /api/data/tickets/count` - Preview count (?year_month=&source=&from_month=&to_month=)
+- `DELETE /api/data/tickets/by-period` - Delete by year_month + source
 - `DELETE /api/data/tickets/by-import/{id}` - Delete by import
+- `DELETE /api/data/tickets/by-period-range` - Delete by month range
+- `DELETE /api/data/tickets/by-source` - Delete all by source
 - `GET /api/admin/backups` - List backups
 - `POST /api/admin/backup` - Create backup
 - `POST /api/admin/restore` - Restore from backup
@@ -154,6 +158,12 @@ exports/               - Generated reports
 - `GET /api/master/site/{id}` - Single site detail
 - `PUT /api/master/site/{id}` - Update site (auto-enriches on class/flag change)
 - `POST /api/master/site/export` - Export filtered CSV
+- `GET /api/master/site/stats` - Site statistics (total, active, by_class, by_flag, enrichment)
+- `GET /api/master/site/template/{type}` - Download CSV template (coordinates/equipment/enriched)
+- `POST /api/master/site/bulk-update` - JSON bulk update (coordinates/equipment/mixed)
+- `POST /api/master/site/bulk-update/upload` - File CSV/Excel bulk update
+- `POST /api/master/site/import-enriched` - Import enriched site master
+- `POST /api/master/site/recalculate-derived` - Batch recalculate derived columns
 - `GET /api/master/sla-target` - List SLA target rules
 - `POST /api/master/sla-target` - Create SLA rule
 - `PUT /api/master/sla-target/{id}` - Update SLA rule

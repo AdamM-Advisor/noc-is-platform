@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, FileUp, CheckCircle, XCircle, RefreshCw, AlertTriangle, Clock, ChevronDown, Trash2 } from 'lucide-react';
+import { Upload, FileUp, CheckCircle, XCircle, RefreshCw, AlertTriangle, Clock, ChevronDown, Trash2, Check, X, Eye, Calendar } from 'lucide-react';
 import { uploadClient } from '../api/client';
 import client from '../api/client';
 
@@ -15,6 +15,11 @@ const FILE_TYPE_LABELS = {
   fault_center: 'Fault Center',
 };
 
+const COVERAGE_SOURCES = ['swfm_event', 'swfm_incident', 'swfm_realtime', 'fault_center'];
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const MONTH_FULL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
 const PHASE_LABELS = {
   reading: 'Membaca file...',
   normalizing: 'Menormalisasi header...',
@@ -26,6 +31,13 @@ const PHASE_LABELS = {
   completed: 'Selesai',
   failed: 'Gagal',
 };
+
+function formatCount(n) {
+  if (!n && n !== 0) return '0';
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
+  return n.toString();
+}
 
 function UploadPage() {
   const [dragOver, setDragOver] = useState(false);
@@ -42,8 +54,25 @@ function UploadPage() {
   const fileInputRef = useRef(null);
   const pollRef = useRef(null);
 
+  const [coverageData, setCoverageData] = useState(null);
+  const [coverageYear, setCoverageYear] = useState(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [cellPopover, setCellPopover] = useState(null);
+
+  const [mgmtImports, setMgmtImports] = useState([]);
+  const [periodeMonth, setPeriodeMonth] = useState('');
+  const [periodeSource, setPeriodeSource] = useState('');
+  const [periodePreview, setPeriodePreview] = useState(null);
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const [rangeSource, setRangeSource] = useState('');
+  const [rangePreview, setRangePreview] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
   useEffect(() => {
     loadImportHistory();
+    loadCoverage();
+    loadMgmtImports();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -54,6 +83,55 @@ function UploadPage() {
       const res = await client.get('/imports');
       setImportHistory(res.data);
     } catch (e) {}
+  };
+
+  const loadCoverage = async () => {
+    setCoverageLoading(true);
+    try {
+      const res = await client.get('/data/coverage');
+      const raw = res.data;
+      const flatCoverage = [];
+      const yearSet = new Set();
+      if (raw?.coverage) {
+        for (const [period, sources] of Object.entries(raw.coverage)) {
+          const yr = period.split('-')[0];
+          yearSet.add(yr);
+          for (const [source, info] of Object.entries(sources)) {
+            if (info.exists) {
+              flatCoverage.push({
+                year_month: period,
+                source,
+                count: info.count || 0,
+                has_orphans: !!info.has_orphans,
+                items: info.imports || [],
+              });
+            }
+          }
+        }
+      }
+      const years = [...yearSet].sort().reverse();
+      const transformed = { coverage: flatCoverage, years, summary: raw?.summary || {} };
+      setCoverageData(transformed);
+      if (!coverageYear && years.length > 0) {
+        setCoverageYear(years[0]);
+      }
+    } catch (e) {
+      setError('Gagal memuat data coverage');
+    }
+    setCoverageLoading(false);
+  };
+
+  const loadMgmtImports = async () => {
+    try {
+      const res = await client.get('/imports');
+      setMgmtImports(res.data);
+    } catch (e) {}
+  };
+
+  const refreshAll = () => {
+    loadCoverage();
+    loadMgmtImports();
+    loadImportHistory();
   };
 
   const getExtension = (name) => {
@@ -186,6 +264,8 @@ function UploadPage() {
             setProcessingResult(job.result);
             setIsProcessing(false);
             loadImportHistory();
+            loadCoverage();
+            loadMgmtImports();
           } else if (job.status === 'failed') {
             clearInterval(pollRef.current);
             setError(job.error || 'Processing gagal');
@@ -239,6 +319,146 @@ function UploadPage() {
     if (c === 'medium') return 'text-yellow-600';
     return 'text-red-600';
   };
+
+  const getCoverageCell = (source, monthIdx) => {
+    if (!coverageData?.coverage || !coverageYear) return null;
+    const ym = `${coverageYear}-${String(monthIdx + 1).padStart(2, '0')}`;
+    const items = coverageData.coverage.filter(c => c.source === source && c.year_month === ym);
+    if (items.length === 0) return null;
+    const total = items.reduce((s, i) => s + (i.count || 0), 0);
+    const hasOrphans = items.some(i => i.has_orphans);
+    return { items, total, hasOrphans, ym };
+  };
+
+  const getCoverageSummary = () => {
+    if (!coverageData?.coverage || !coverageYear) return { total: 0, months: 0, firstMonth: null, lastMonth: null };
+    const yearItems = coverageData.coverage.filter(c => c.year_month?.startsWith(coverageYear));
+    const total = yearItems.reduce((s, i) => s + (i.count || 0), 0);
+    const uniqueMonths = [...new Set(yearItems.map(i => i.year_month))].sort();
+    const months = uniqueMonths.length;
+    let firstMonth = null, lastMonth = null;
+    if (uniqueMonths.length > 0) {
+      const fIdx = parseInt(uniqueMonths[0].split('-')[1]) - 1;
+      const lIdx = parseInt(uniqueMonths[uniqueMonths.length - 1].split('-')[1]) - 1;
+      firstMonth = MONTH_NAMES[fIdx];
+      lastMonth = MONTH_NAMES[lIdx];
+    }
+    return { total, months, firstMonth, lastMonth };
+  };
+
+  const handleCellClick = (source, monthIdx) => {
+    const cell = getCoverageCell(source, monthIdx);
+    setCellPopover({ source, monthIdx, cell });
+  };
+
+  const handleDeleteByPeriod = async (ym, source) => {
+    try {
+      const countRes = await client.get('/data/tickets/count', { params: { year_month: ym, source } });
+      const count = countRes.data?.count || 0;
+      setDeleteConfirm({
+        message: `Anda akan menghapus ${count.toLocaleString()} tiket. Backup otomatis akan dibuat. Lanjutkan?`,
+        onConfirm: async () => {
+          try {
+            await client.delete('/data/tickets/by-period', { data: { year_month: ym, source } });
+            setDeleteConfirm(null);
+            setCellPopover(null);
+            refreshAll();
+          } catch (e) {
+            setError('Gagal menghapus data');
+            setDeleteConfirm(null);
+          }
+        },
+      });
+    } catch (e) {
+      setError('Gagal mendapatkan jumlah tiket');
+    }
+  };
+
+  const handleDeleteByImport = async (id) => {
+    const imp = mgmtImports.find(i => i.id === id);
+    const count = imp?.rows_imported || 0;
+    setDeleteConfirm({
+      message: `Anda akan menghapus data import #${id} (${count.toLocaleString()} tiket). Backup otomatis akan dibuat. Lanjutkan?`,
+      onConfirm: async () => {
+        try {
+          await client.delete(`/data/tickets/by-import/${id}`);
+          setDeleteConfirm(null);
+          refreshAll();
+        } catch (e) {
+          setError('Gagal menghapus data');
+          setDeleteConfirm(null);
+        }
+      },
+    });
+  };
+
+  const handlePeriodePreview = async () => {
+    if (!periodeMonth || !periodeSource) return;
+    try {
+      const res = await client.get('/data/tickets/count', { params: { year_month: periodeMonth, source: periodeSource } });
+      setPeriodePreview(res.data?.count || 0);
+    } catch (e) {
+      setError('Gagal mendapatkan jumlah tiket');
+    }
+  };
+
+  const handlePeriodeDelete = () => {
+    if (periodePreview === null || periodePreview === undefined) return;
+    setDeleteConfirm({
+      message: `Anda akan menghapus ${periodePreview.toLocaleString()} tiket. Backup otomatis akan dibuat. Lanjutkan?`,
+      onConfirm: async () => {
+        try {
+          await client.delete('/data/tickets/by-period', { data: { year_month: periodeMonth, source: periodeSource } });
+          setDeleteConfirm(null);
+          setPeriodePreview(null);
+          refreshAll();
+        } catch (e) {
+          setError('Gagal menghapus data');
+          setDeleteConfirm(null);
+        }
+      },
+    });
+  };
+
+  const handleRangePreview = async () => {
+    if (!rangeFrom || !rangeTo) return;
+    try {
+      const params = { from_month: rangeFrom, to_month: rangeTo };
+      if (rangeSource) params.source = rangeSource;
+      const res = await client.get('/data/tickets/count', { params });
+      setRangePreview(res.data?.count || 0);
+    } catch (e) {
+      setError('Gagal mendapatkan jumlah tiket');
+    }
+  };
+
+  const handleRangeDelete = () => {
+    if (rangePreview === null || rangePreview === undefined) return;
+    setDeleteConfirm({
+      message: `Anda akan menghapus ${rangePreview.toLocaleString()} tiket. Backup otomatis akan dibuat. Lanjutkan?`,
+      onConfirm: async () => {
+        try {
+          await client.delete('/data/tickets/by-period-range', {
+            data: { from: rangeFrom, to: rangeTo, source: rangeSource || undefined },
+          });
+          setDeleteConfirm(null);
+          setRangePreview(null);
+          refreshAll();
+        } catch (e) {
+          setError('Gagal menghapus data');
+          setDeleteConfirm(null);
+        }
+      },
+    });
+  };
+
+  const getAvailablePeriods = () => {
+    if (!coverageData?.coverage) return [];
+    const periods = [...new Set(coverageData.coverage.map(c => c.year_month))].sort();
+    return periods;
+  };
+
+  const summary = getCoverageSummary();
 
   return (
     <div>
@@ -498,6 +718,356 @@ function UploadPage() {
           </div>
         )}
       </div>
+
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-[#1B2A4A]">Data Coverage</h3>
+          <div className="flex items-center gap-3">
+            {coverageData?.years?.length > 0 && (
+              <div className="relative">
+                <select
+                  value={coverageYear || ''}
+                  onChange={(e) => setCoverageYear(e.target.value)}
+                  className="appearance-none bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                >
+                  {coverageData.years.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            )}
+            <button
+              onClick={loadCoverage}
+              disabled={coverageLoading}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#1B2A4A] border border-gray-300 rounded-lg px-3 py-1.5 hover:border-[#1B2A4A] transition-colors"
+            >
+              <RefreshCw size={12} className={coverageLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-[#1B2A4A] text-white">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Sumber Data</th>
+                  {MONTH_NAMES.map((m, i) => (
+                    <th key={i} className="px-2 py-2 text-center font-medium">{m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {COVERAGE_SOURCES.map(source => (
+                  <tr key={source} className="hover:bg-gray-50">
+                    <td className="px-3 py-2.5 font-medium text-gray-700 whitespace-nowrap">
+                      {FILE_TYPE_LABELS[source]}
+                    </td>
+                    {MONTH_NAMES.map((_, monthIdx) => {
+                      const cell = getCoverageCell(source, monthIdx);
+                      return (
+                        <td
+                          key={monthIdx}
+                          className="px-2 py-2.5 text-center cursor-pointer hover:bg-gray-100 transition-colors"
+                          onClick={() => handleCellClick(source, monthIdx)}
+                        >
+                          {cell ? (
+                            <span className="inline-flex items-center gap-0.5">
+                              {cell.hasOrphans ? (
+                                <AlertTriangle size={12} className="text-yellow-500" />
+                              ) : (
+                                <Check size={12} className="text-green-500" />
+                              )}
+                              <span className={cell.hasOrphans ? 'text-yellow-700 font-medium' : 'text-green-700 font-medium'}>
+                                {formatCount(cell.total)}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs text-gray-600">
+            <span>
+              Total Tiket: <strong>{summary.total.toLocaleString()}</strong>
+              {summary.months > 0 && (
+                <> | Periode: {summary.firstMonth}-{summary.lastMonth} {coverageYear} ({summary.months} bulan)</>
+              )}
+            </span>
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-100 border border-green-300 inline-block"></span> Data tersedia</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-yellow-100 border border-yellow-300 inline-block"></span> Ada orphan/warning</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-gray-100 border border-gray-300 inline-block"></span> Belum ada data</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {cellPopover && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={() => setCellPopover(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-5 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-semibold text-[#1B2A4A]">
+                {FILE_TYPE_LABELS[cellPopover.source]} - {MONTH_FULL[cellPopover.monthIdx]} {coverageYear}
+              </h4>
+              <button onClick={() => setCellPopover(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            {cellPopover.cell ? (
+              <div className="space-y-3">
+                {cellPopover.cell.items.map((item, idx) => (
+                  <div key={idx} className="bg-gray-50 rounded-lg p-3 text-sm">
+                    <div className="grid grid-cols-2 gap-1">
+                      {item.id && <div className="text-gray-500">Import ID: <span className="text-gray-800">{item.id}</span></div>}
+                      {item.imported_at && <div className="text-gray-500">Tanggal: <span className="text-gray-800">{new Date(item.imported_at).toLocaleDateString('id-ID')}</span></div>}
+                      <div className="text-gray-500">Jumlah: <span className="text-gray-800 font-medium">{(item.rows_imported || 0).toLocaleString()}</span></div>
+                      <div className="text-gray-500">Orphans: <span className={(item.orphan_count || 0) > 0 ? 'text-yellow-600 font-medium' : 'text-gray-800'}>{item.orphan_count || 0}</span></div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => handleDeleteByPeriod(cellPopover.cell.ym, cellPopover.source)}
+                  className="w-full mt-2 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={14} /> Hapus Data Ini
+                </button>
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <div className="text-gray-400 mb-2">
+                  <Calendar size={32} className="mx-auto" />
+                </div>
+                <p className="text-sm text-gray-600">
+                  Data belum tersedia. Upload file {FILE_TYPE_LABELS[cellPopover.source]} {MONTH_FULL[cellPopover.monthIdx]} {coverageYear}.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-10">
+        <h3 className="text-lg font-bold text-[#1B2A4A] mb-4">Manajemen Data Tiket</h3>
+
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-6">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">Riwayat Import</span>
+            <button onClick={loadMgmtImports} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </div>
+          {mgmtImports.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-400">Belum ada data import</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs">
+                  <tr>
+                    <th className="px-3 py-2 text-left">#</th>
+                    <th className="px-3 py-2 text-left">Tanggal</th>
+                    <th className="px-3 py-2 text-left">File</th>
+                    <th className="px-3 py-2 text-left">Tipe</th>
+                    <th className="px-3 py-2 text-right">Rows</th>
+                    <th className="px-3 py-2 text-center">Status</th>
+                    <th className="px-3 py-2 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {mgmtImports.map((item, idx) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                        {item.imported_at ? new Date(item.imported_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-800 font-medium truncate max-w-[200px]">{item.filename}</td>
+                      <td className="px-3 py-2 text-gray-600">{FILE_TYPE_LABELS[item.file_type] || item.file_type}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{item.rows_imported?.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center">
+                        {item.status === 'completed' ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                            <CheckCircle size={12} /> OK
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-red-600">
+                            <XCircle size={12} /> {item.status}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button onClick={() => handleDeleteByImport(item.id)} className="text-red-400 hover:text-red-600">
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-[#1B2A4A] mb-4">Hapus per Periode</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Periode</label>
+                <div className="relative">
+                  <select
+                    value={periodeMonth}
+                    onChange={(e) => { setPeriodeMonth(e.target.value); setPeriodePreview(null); }}
+                    className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="">Pilih periode...</option>
+                    {getAvailablePeriods().map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Source</label>
+                <div className="relative">
+                  <select
+                    value={periodeSource}
+                    onChange={(e) => { setPeriodeSource(e.target.value); setPeriodePreview(null); }}
+                    className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="">Pilih source...</option>
+                    {COVERAGE_SOURCES.map(s => (
+                      <option key={s} value={s}>{FILE_TYPE_LABELS[s]}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePeriodePreview}
+                  disabled={!periodeMonth || !periodeSource}
+                  className="flex-1 flex items-center justify-center gap-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Eye size={14} /> Preview
+                </button>
+                <button
+                  onClick={handlePeriodeDelete}
+                  disabled={periodePreview === null || periodePreview === undefined}
+                  className="flex-1 flex items-center justify-center gap-1 bg-red-600 text-white py-2 rounded-lg text-sm hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Trash2 size={14} /> Hapus
+                </button>
+              </div>
+              {periodePreview !== null && periodePreview !== undefined && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                  Tiket yang akan dihapus: <strong>{periodePreview.toLocaleString()}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-[#1B2A4A] mb-4">Hapus per Range</h4>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Dari</label>
+                  <input
+                    type="month"
+                    value={rangeFrom}
+                    onChange={(e) => { setRangeFrom(e.target.value); setRangePreview(null); }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Sampai</label>
+                  <input
+                    type="month"
+                    value={rangeTo}
+                    onChange={(e) => { setRangeTo(e.target.value); setRangePreview(null); }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Source (opsional)</label>
+                <div className="relative">
+                  <select
+                    value={rangeSource}
+                    onChange={(e) => { setRangeSource(e.target.value); setRangePreview(null); }}
+                    className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="">Semua source</option>
+                    {COVERAGE_SOURCES.map(s => (
+                      <option key={s} value={s}>{FILE_TYPE_LABELS[s]}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRangePreview}
+                  disabled={!rangeFrom || !rangeTo}
+                  className="flex-1 flex items-center justify-center gap-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Eye size={14} /> Preview
+                </button>
+                <button
+                  onClick={handleRangeDelete}
+                  disabled={rangePreview === null || rangePreview === undefined}
+                  className="flex-1 flex items-center justify-center gap-1 bg-red-600 text-white py-2 rounded-lg text-sm hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Trash2 size={14} /> Hapus
+                </button>
+              </div>
+              {rangePreview !== null && rangePreview !== undefined && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                  Tiket yang akan dihapus: <strong>{rangePreview.toLocaleString()}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={() => setDeleteConfirm(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-red-600" />
+              </div>
+              <h4 className="font-semibold text-gray-800">Konfirmasi Hapus</h4>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">{deleteConfirm.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={deleteConfirm.onConfirm}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm hover:bg-red-700 transition-colors"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
