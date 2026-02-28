@@ -1,3 +1,4 @@
+import time
 import threading
 import duckdb
 from contextlib import contextmanager
@@ -14,7 +15,16 @@ def _configure_connection(conn):
 
 @contextmanager
 def get_connection():
-    conn = duckdb.connect(DB_PATH, read_only=True)
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            conn = duckdb.connect(DB_PATH, read_only=False)
+            break
+        except duckdb.ConnectionException:
+            if attempt < max_retries - 1:
+                time.sleep(0.3 * (attempt + 1))
+            else:
+                raise
     try:
         _configure_connection(conn)
         yield conn
@@ -25,12 +35,14 @@ def get_connection():
 @contextmanager
 def get_write_connection():
     _write_lock.acquire()
-    conn = duckdb.connect(DB_PATH, read_only=False)
     try:
-        _configure_connection(conn)
-        yield conn
+        conn = duckdb.connect(DB_PATH, read_only=False)
+        try:
+            _configure_connection(conn)
+            yield conn
+        finally:
+            conn.close()
     finally:
-        conn.close()
         _write_lock.release()
 
 
