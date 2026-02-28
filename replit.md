@@ -83,6 +83,7 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
     - `aiofiles`: Asynchronous file operations.
     - `psutil`: System utility for process information (e.g., memory usage).
     - `pandas`: Data manipulation and analysis.
+    - `pyarrow`: Parquet file format support for pandas.
     - `openpyxl`: For reading/writing Excel files.
     - `weasyprint`: HTML/CSS to PDF conversion for report generation.
     - `matplotlib`: Server-side chart rendering (trend lines, bar charts, radar, pareto, heatmaps).
