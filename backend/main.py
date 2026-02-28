@@ -1,7 +1,11 @@
+import os
 import time
 import logging
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from backend.database import init_database
 from backend.routers import health, upload, admin
 from backend.routers import schema, threshold
@@ -52,6 +56,9 @@ app.include_router(comparison.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 
 
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
 @app.on_event("startup")
 async def startup():
     init_database()
@@ -68,3 +75,14 @@ async def startup():
         logger.info("Schema already initialized")
         from backend.services.calendar_service import seed_calendar_if_empty
         seed_calendar_if_empty()
+
+
+if FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = FRONTEND_DIST / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIST / "index.html"))

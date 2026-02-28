@@ -71,6 +71,7 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
 - **Schema Auto-Initialization**: Ensures the database is ready on application startup if empty.
 - **Configurable Thresholds**: Allows dynamic adjustment of analytical parameters.
 - **Priority-based SLA Resolution**: Determines SLA targets based on a defined priority hierarchy.
+- **Production Deployment**: FastAPI serves both the API (`/api/*`) and the built Vite frontend (static files + SPA catch-all fallback) from a single process. Build step: `cd frontend && npm install && npm run build`. Run: `uvicorn backend.main:app` on port 5000. Deployment target: autoscale.
 
 ## External Dependencies
 
