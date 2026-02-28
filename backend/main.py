@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_database
 from backend.routers import health, upload, admin
 from backend.routers import schema, threshold
+from backend.routers import imports, orphans, data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,6 +27,9 @@ app.include_router(upload.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(schema.router, prefix="/api")
 app.include_router(threshold.router, prefix="/api")
+app.include_router(imports.router, prefix="/api")
+app.include_router(orphans.router, prefix="/api")
+app.include_router(data.router, prefix="/api")
 
 
 @app.on_event("startup")
