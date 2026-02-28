@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.pythonlibs/
+__pycache__/
+*.pyc
+*.pyo
+.env
+data/noc_analytics.duckdb
+data/noc_analytics.duckdb.wal
+data/backups/*.duckdb
+uploads/*
+!uploads/.gitkeep
+temp_chunks/*
+!temp_chunks/.gitkeep
+exports/*
+!exports/.gitkeep
