@@ -22,6 +22,10 @@ backend/
     imports.py         - Import history CRUD + delete
     orphans.py         - Orphan management + resolve
     data.py            - Granular ticket delete
+    hierarchy.py       - Area/Regional/NOP/TO CRUD + tree + stats
+    site.py            - Site CRUD w/ server-side pagination + export
+    sla_target.py      - SLA target rules CRUD + resolver + impact
+    data_quality.py    - Data quality summary endpoint
   services/
     backup_service.py  - Auto-backup logic (retain 3)
     upload_service.py  - Chunk assembly + validation
@@ -46,7 +50,14 @@ frontend/
     pages/
       Dashboard.jsx    - Placeholder with health info
       UploadPage.jsx   - Full processing pipeline UI (detect, process, history)
+      MasterDataPage.jsx - 5-tab master data management
       SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
+      master/
+        HierarchyTab.jsx   - Tree view CRUD (Area→Regional→NOP→TO)
+        SiteTab.jsx        - Server-side paginated site list (50/pg)
+        SlaTargetTab.jsx   - SLA target rules + resolver tester
+        ThresholdTab.jsx   - Inline-edit threshold params by category
+        DataQualityTab.jsx - Data quality dashboard + orphan management
     stores/
       cacheStore.js    - Zustand cache with 5-min TTL
 
@@ -129,6 +140,27 @@ exports/               - Generated reports
 - `GET /api/threshold` - All thresholds grouped by category
 - `GET /api/threshold/{key}` - Single threshold
 - `PUT /api/threshold/{key}` - Update threshold value
+- `GET/POST /api/master/area` - List/create areas
+- `PUT/DELETE /api/master/area/{id}` - Update/soft-delete area
+- `GET/POST /api/master/regional` - List/create regionals (?area_id=)
+- `PUT/DELETE /api/master/regional/{id}` - Update/soft-delete regional
+- `GET/POST /api/master/nop` - List/create NOPs (?regional_id=)
+- `PUT/DELETE /api/master/nop/{id}` - Update/soft-delete NOP
+- `GET/POST /api/master/to` - List/create TOs (?nop_id=)
+- `PUT/DELETE /api/master/to/{id}` - Update/soft-delete TO
+- `GET /api/master/hierarchy/tree` - Full nested hierarchy tree
+- `GET /api/master/hierarchy/stats` - Count per level
+- `GET /api/master/site` - Paginated site list (?page&per_page&filters&sort)
+- `GET /api/master/site/{id}` - Single site detail
+- `PUT /api/master/site/{id}` - Update site (auto-enriches on class/flag change)
+- `POST /api/master/site/export` - Export filtered CSV
+- `GET /api/master/sla-target` - List SLA target rules
+- `POST /api/master/sla-target` - Create SLA rule
+- `PUT /api/master/sla-target/{id}` - Update SLA rule
+- `DELETE /api/master/sla-target/{id}` - Delete SLA rule (protect default)
+- `GET /api/master/sla-target/resolve` - Resolve target (?site_class&site_flag&area_id)
+- `GET /api/master/sla-target/{id}/impact` - Count affected sites
+- `GET /api/data-quality/summary` - Data quality dashboard summary
 
 ## Key Constraints
 - DuckDB single-writer: only 1 write connection via threading.Lock

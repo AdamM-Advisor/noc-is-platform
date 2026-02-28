@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, Upload, Settings, Menu, X, Info } from 'lucide-react';
+import { BarChart3, Upload, Settings, Menu, X, Info, Database } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', icon: BarChart3, label: 'Dashboard' },
   { to: '/upload', icon: Upload, label: 'Upload' },
+  { to: '/master-data', icon: Database, label: 'Master Data' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
