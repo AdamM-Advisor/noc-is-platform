@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import UploadPage from './pages/UploadPage';
 import MasterDataPage from './pages/MasterDataPage';
+import ExternalDataPage from './pages/ExternalDataPage';
 import SettingsPage from './pages/SettingsPage';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="master-data" element={<MasterDataPage />} />
+          <Route path="external-data" element={<ExternalDataPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

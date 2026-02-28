@@ -6,7 +6,7 @@ from backend.database import init_database
 from backend.routers import health, upload, admin
 from backend.routers import schema, threshold
 from backend.routers import imports, orphans, data
-from backend.routers import hierarchy, site, sla_target, data_quality
+from backend.routers import hierarchy, site, sla_target, data_quality, external
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ app.include_router(hierarchy.router, prefix="/api")
 app.include_router(site.router, prefix="/api")
 app.include_router(sla_target.router, prefix="/api")
 app.include_router(data_quality.router, prefix="/api")
+app.include_router(external.router, prefix="/api")
 
 
 @app.on_event("startup")
@@ -47,3 +48,5 @@ async def startup():
         logger.info(f"Schema initialized: {len(result['tables_created'])} tables created")
     else:
         logger.info("Schema already initialized")
+        from backend.services.calendar_service import seed_calendar_if_empty
+        seed_calendar_if_empty()

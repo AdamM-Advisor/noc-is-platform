@@ -349,6 +349,77 @@ TABLES_DDL = [
             imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """),
+    ("ext_weather", """
+        CREATE TABLE IF NOT EXISTS ext_weather (
+            id INTEGER PRIMARY KEY,
+            date DATE NOT NULL,
+            province VARCHAR NOT NULL,
+            city VARCHAR,
+            rainfall_mm DOUBLE,
+            temperature_avg_c DOUBLE,
+            temperature_max_c DOUBLE,
+            temperature_min_c DOUBLE,
+            humidity_avg_pct DOUBLE,
+            wind_speed_avg_kmh DOUBLE,
+            weather_condition VARCHAR,
+            is_extreme BOOLEAN DEFAULT FALSE,
+            source VARCHAR DEFAULT 'BMKG',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ext_pln_outage", """
+        CREATE TABLE IF NOT EXISTS ext_pln_outage (
+            id INTEGER PRIMARY KEY,
+            date DATE NOT NULL,
+            province VARCHAR NOT NULL,
+            city VARCHAR,
+            district VARCHAR,
+            outage_type VARCHAR,
+            start_time TIMESTAMP,
+            end_time TIMESTAMP,
+            duration_hours DOUBLE,
+            affected_area VARCHAR,
+            source VARCHAR DEFAULT 'PLN',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ext_calendar", """
+        CREATE TABLE IF NOT EXISTS ext_calendar (
+            date DATE PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            day INTEGER NOT NULL,
+            day_of_week INTEGER NOT NULL,
+            week_of_year INTEGER,
+            is_weekend BOOLEAN DEFAULT FALSE,
+            is_holiday BOOLEAN DEFAULT FALSE,
+            is_cuti_bersama BOOLEAN DEFAULT FALSE,
+            is_ramadan BOOLEAN DEFAULT FALSE,
+            holiday_name VARCHAR,
+            day_type VARCHAR NOT NULL,
+            source VARCHAR DEFAULT 'built_in',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ext_annotations", """
+        CREATE TABLE IF NOT EXISTS ext_annotations (
+            id INTEGER PRIMARY KEY,
+            date DATE NOT NULL,
+            date_end DATE,
+            area_id VARCHAR,
+            regional_id VARCHAR,
+            province VARCHAR,
+            annotation_type VARCHAR NOT NULL,
+            title VARCHAR NOT NULL,
+            description VARCHAR,
+            severity VARCHAR DEFAULT 'info',
+            color VARCHAR,
+            icon VARCHAR,
+            show_on_chart BOOLEAN DEFAULT TRUE,
+            source VARCHAR DEFAULT 'manual',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
 ]
 
 INDEXES_DDL = [
@@ -358,6 +429,11 @@ INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_tickets_regional ON noc_tickets(calc_regional_id)",
     "CREATE INDEX IF NOT EXISTS idx_tickets_source ON noc_tickets(calc_source)",
     "CREATE INDEX IF NOT EXISTS idx_tickets_severity ON noc_tickets(severity)",
+    "CREATE INDEX IF NOT EXISTS idx_weather_date ON ext_weather(date)",
+    "CREATE INDEX IF NOT EXISTS idx_weather_province ON ext_weather(province)",
+    "CREATE INDEX IF NOT EXISTS idx_pln_date ON ext_pln_outage(date)",
+    "CREATE INDEX IF NOT EXISTS idx_pln_province ON ext_pln_outage(province)",
+    "CREATE INDEX IF NOT EXISTS idx_annotations_date ON ext_annotations(date)",
 ]
 
 VIEW_DDL = """
@@ -462,6 +538,9 @@ def initialize_schema():
         conn.execute(SEED_AREA)
         conn.execute(SEED_SLA_TARGET)
         conn.execute(SEED_THRESHOLD)
+
+    from backend.services.calendar_service import seed_calendar_if_empty
+    seed_calendar_if_empty()
 
     seed_counts = _get_seed_counts()
     logger.info(f"Schema initialized: {len(tables_created)} tables created")

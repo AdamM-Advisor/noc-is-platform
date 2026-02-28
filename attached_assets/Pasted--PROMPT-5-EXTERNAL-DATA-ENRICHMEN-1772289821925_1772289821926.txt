@@ -1,0 +1,667 @@
+# ============================================================
+
+# PROMPT 5 — EXTERNAL DATA ENRICHMENT (OPSIONAL)
+
+# NOC-IS Analytics Platform v1.0
+
+# Author: Dr. Adam M.
+
+# ============================================================
+
+#
+
+# PRASYARAT:
+
+# Prompt 0-4 sudah dijalankan (platform, schema, upload,
+
+# master CRUD, site enrichment)
+
+#
+
+# STATUS: OPSIONAL — Platform berfungsi penuh tanpa prompt ini.
+
+# Fitur ini menambahkan KONTEKS EKSTERNAL untuk
+
+# memperkaya analisis (cuaca, PLN, hari libur).
+
+#
+
+# HASIL YANG DIHARAPKAN:
+
+# ✅ Tabel & upload: data cuaca (BMKG)
+
+# ✅ Tabel & upload: data gangguan PLN
+
+# ✅ Built-in: kalender hari libur nasional Indonesia
+
+# ✅ Annotation system pada trend lines
+
+# ✅ Korelasi sederhana: cuaca × gangguan, PLN × gangguan
+
+# ✅ Halaman "External Data" di sidebar
+
+# ============================================================
+
+Lanjutkan pembangunan **NOC-IS Analytics Platform**. Prompt sebelumnya sudah membangun site enrichment & data management. Sekarang bangun **modul data eksternal** — menambahkan konteks cuaca, PLN, dan kalender untuk memperkaya analisis.
+
+**CATATAN**: Fitur ini OPSIONAL. Platform berfungsi penuh tanpa data eksternal. Modul ini menambahkan overlay & korelasi jika data tersedia.
+
+* * *
+
+## 1. DATABASE SCHEMA — Tabel Baru
+
+### 1A. `ext_weather` (Data Cuaca BMKG)
+
+    CREATE TABLE IF NOT EXISTS ext_weather (
+        id INTEGER PRIMARY KEY,
+        date DATE NOT NULL,
+        province VARCHAR NOT NULL,          -- "Jawa Barat", "DKI Jakarta"
+        city VARCHAR,                       -- "Bandung", "Jakarta Selatan"
+        -- Metrik cuaca harian
+        rainfall_mm DOUBLE,                 -- curah hujan (mm)
+        temperature_avg_c DOUBLE,           -- suhu rata-rata (°C)
+        temperature_max_c DOUBLE,
+        temperature_min_c DOUBLE,
+        humidity_avg_pct DOUBLE,            -- kelembapan (%)
+        wind_speed_avg_kmh DOUBLE,          -- kecepatan angin
+        weather_condition VARCHAR,          -- "Cerah"/"Berawan"/"Hujan"/"Hujan Lebat"/"Badai"
+        -- Derived
+        is_extreme BOOLEAN DEFAULT FALSE,   -- curah hujan > 50mm ATAU angin > 40km/h
+        -- Metadata
+        source VARCHAR DEFAULT 'BMKG',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_weather_date ON ext_weather(date);
+    CREATE INDEX IF NOT EXISTS idx_weather_province ON ext_weather(province);
+
+### 1B. `ext_pln_outage` (Data Gangguan PLN)
+
+    CREATE TABLE IF NOT EXISTS ext_pln_outage (
+        id INTEGER PRIMARY KEY,
+        date DATE NOT NULL,
+        province VARCHAR NOT NULL,
+        city VARCHAR,
+        district VARCHAR,
+        -- Detail gangguan
+        outage_type VARCHAR,                -- "Pemadaman Bergilir"/"Gangguan"/"Pemeliharaan"
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        duration_hours DOUBLE,
+        affected_area VARCHAR,              -- deskripsi area terdampak
+        -- Metadata
+        source VARCHAR DEFAULT 'PLN',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_pln_date ON ext_pln_outage(date);
+    CREATE INDEX IF NOT EXISTS idx_pln_province ON ext_pln_outage(province);
+
+### 1C. `ext_calendar` (Kalender & Hari Libur)
+
+    CREATE TABLE IF NOT EXISTS ext_calendar (
+        date DATE PRIMARY KEY,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        day INTEGER NOT NULL,
+        day_of_week INTEGER NOT NULL,       -- 0=Sun, 6=Sat
+        week_of_year INTEGER,
+        -- Klasifikasi
+        is_weekend BOOLEAN DEFAULT FALSE,
+        is_holiday BOOLEAN DEFAULT FALSE,
+        is_cuti_bersama BOOLEAN DEFAULT FALSE,
+        is_ramadan BOOLEAN DEFAULT FALSE,
+        holiday_name VARCHAR,               -- "Idul Fitri 1446 H", "Natal"
+        day_type VARCHAR NOT NULL,          -- "Kerja"/"Akhir Pekan"/"Libur Nasional"/"Cuti Bersama"
+        -- Metadata
+        source VARCHAR DEFAULT 'built_in',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+### 1D. `ext_annotations` (Anotasi pada Trend)
+
+    CREATE TABLE IF NOT EXISTS ext_annotations (
+        id INTEGER PRIMARY KEY,
+        -- Waktu
+        date DATE NOT NULL,
+        date_end DATE,                      -- NULL jika event 1 hari
+        -- Scope (opsional — NULL berarti berlaku nasional)
+        area_id VARCHAR,
+        regional_id VARCHAR,
+        province VARCHAR,
+        -- Konten
+        annotation_type VARCHAR NOT NULL,   -- "weather"/"pln"/"holiday"/"custom"/"incident"
+        title VARCHAR NOT NULL,             -- "Banjir Jakarta", "Lebaran 2025"
+        description VARCHAR,
+        severity VARCHAR DEFAULT 'info',    -- "info"/"warning"/"critical"
+        -- Display
+        color VARCHAR,                      -- hex color untuk marker
+        icon VARCHAR,                       -- emoji: 🌧️ ⚡ 🕌 📌
+        show_on_chart BOOLEAN DEFAULT TRUE,
+        -- Metadata
+        source VARCHAR DEFAULT 'manual',    -- "manual"/"auto_weather"/"auto_pln"/"built_in"
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_annotations_date ON ext_annotations(date);
+
+* * *
+
+## 2. BUILT-IN: KALENDER INDONESIA
+
+### 2A. Auto-Generate Calendar
+
+Saat schema init, otomatis generate `ext_calendar` untuk 3 tahun (tahun lalu, tahun ini, tahun depan):
+
+    def generate_calendar(year: int):
+        """
+        Generate 365/366 baris untuk 1 tahun.
+        Setiap tanggal: year, month, day, day_of_week, is_weekend, day_type.
+        """
+        # Loop setiap tanggal dalam tahun
+        # is_weekend = day_of_week in (0, 6)  # Minggu=0, Sabtu=6
+        # day_type = "Akhir Pekan" if is_weekend else "Kerja"
+
+### 2B. Hari Libur Nasional Indonesia 2025-2026
+
+Seed data hari libur (hardcoded, bisa diupdate user):
+
+    HOLIDAYS_2025 = [
+        ("2025-01-01", "Tahun Baru 2025 Masehi", False, False),
+        ("2025-01-27", "Isra Mi'raj Nabi Muhammad SAW", False, False),
+        ("2025-01-29", "Tahun Baru Imlek 2576", False, False),
+        ("2025-03-28", "Hari Suci Nyepi Tahun Baru Saka 1947", False, False),
+        ("2025-03-29", "Cuti Bersama Nyepi", True, False),
+        ("2025-03-31", "Hari Raya Idul Fitri 1446 H", False, True),
+        ("2025-04-01", "Hari Raya Idul Fitri 1446 H", False, True),
+        ("2025-04-02", "Cuti Bersama Idul Fitri", True, True),
+        ("2025-04-03", "Cuti Bersama Idul Fitri", True, True),
+        ("2025-04-04", "Cuti Bersama Idul Fitri", True, True),
+        ("2025-04-18", "Wafat Isa Al-Masih (Jumat Agung)", False, False),
+        ("2025-05-01", "Hari Buruh Internasional", False, False),
+        ("2025-05-12", "Hari Raya Waisak 2569 BE", False, False),
+        ("2025-05-29", "Kenaikan Isa Al-Masih", False, False),
+        ("2025-06-01", "Hari Lahir Pancasila", False, False),
+        ("2025-06-06", "Hari Raya Idul Adha 1446 H", False, False),
+        ("2025-06-07", "Cuti Bersama Idul Adha", True, False),
+        ("2025-06-27", "Tahun Baru Islam 1447 H", False, False),
+        ("2025-08-17", "Hari Kemerdekaan RI", False, False),
+        ("2025-09-05", "Maulid Nabi Muhammad SAW", False, False),
+        ("2025-12-25", "Hari Raya Natal", False, False),
+        ("2025-12-26", "Cuti Bersama Natal", True, False),
+    ]
+    
+    HOLIDAYS_2026 = [
+        ("2026-01-01", "Tahun Baru 2026 Masehi", False, False),
+        ("2026-01-16", "Isra Mi'raj Nabi Muhammad SAW", False, False),
+        ("2026-02-17", "Tahun Baru Imlek 2577", False, False),
+        ("2026-03-17", "Hari Suci Nyepi Tahun Baru Saka 1948", False, False),
+        ("2026-03-20", "Hari Raya Idul Fitri 1447 H", False, True),
+        ("2026-03-21", "Hari Raya Idul Fitri 1447 H", False, True),
+        ("2026-04-03", "Wafat Isa Al-Masih (Jumat Agung)", False, False),
+        ("2026-05-01", "Hari Buruh Internasional", False, False),
+        ("2026-05-14", "Kenaikan Isa Al-Masih", False, False),
+        ("2026-05-27", "Hari Raya Idul Adha 1447 H", False, False),
+        ("2026-05-31", "Hari Raya Waisak 2570 BE", False, False),
+        ("2026-06-01", "Hari Lahir Pancasila", False, False),
+        ("2026-06-17", "Tahun Baru Islam 1448 H", False, False),
+        ("2026-08-17", "Hari Kemerdekaan RI", False, False),
+        ("2026-08-26", "Maulid Nabi Muhammad SAW", False, False),
+        ("2026-12-25", "Hari Raya Natal", False, False),
+    ]
+    
+    # Format tuple: (date, name, is_cuti_bersama, is_ramadan)
+    # Ramadan 2025: ~1 Mar - 30 Mar (mark is_ramadan=True untuk date range)
+    # Ramadan 2026: ~18 Feb - 19 Mar
+
+### 2C. Update Calendar
+
+    POST /api/external/calendar/generate
+      ← Body: {year: 2025}
+      → Generate 365 baris + apply holidays
+      → Return: {dates: 365, holidays: 22, cuti_bersama: 6}
+    
+    PUT /api/external/calendar/holiday
+      ← Body: {date: "2025-12-31", holiday_name: "Cuti Tambahan", 
+                is_cuti_bersama: true}
+      → Update/add holiday
+      → Return: updated calendar entry
+    
+    GET /api/external/calendar
+      ← Query: ?year=2025 &month=3 &type=holiday
+      → Return: list calendar entries
+
+* * *
+
+## 3. UPLOAD DATA CUACA
+
+### 3A. Upload Flow
+
+    POST /api/external/weather/upload
+      ← File CSV/Excel dengan kolom:
+        date, province, city, rainfall_mm, temperature_avg_c,
+        humidity_avg_pct, wind_speed_avg_kmh, weather_condition
+    
+      → Validasi:
+        • date format valid
+        • province ada di Indonesia (fuzzy match OK)
+        • angka valid (rainfall ≥ 0, temperature reasonable)
+    
+      → Auto-derive:
+        • is_extreme = rainfall_mm > 50 OR wind_speed_avg_kmh > 40
+    
+      → Auto-generate annotations untuk extreme weather:
+        INSERT INTO ext_annotations (...) 
+        SELECT date, province, 'weather', 
+               'Cuaca Ekstrem: ' || weather_condition,
+               'Curah hujan ' || rainfall_mm || 'mm',
+               'warning', '#FF6B00', '🌧️', TRUE, 'auto_weather'
+        FROM ext_weather WHERE is_extreme = TRUE
+    
+      → Return: {imported: 365, extreme_days: 23, annotations_created: 23}
+
+### 3B. Template & Format
+
+    GET /api/external/weather/template
+      → Download CSV template:
+    
+      date,province,city,rainfall_mm,temperature_avg_c,humidity_avg_pct,wind_speed_avg_kmh,weather_condition
+      2025-01-01,Jawa Barat,Bandung,15.2,24.5,78,12,Berawan
+      2025-01-02,Jawa Barat,Bandung,45.8,23.1,92,25,Hujan Lebat
+      2025-01-01,DKI Jakarta,,22.3,28.2,75,8,Hujan
+
+* * *
+
+## 4. UPLOAD DATA PLN
+
+### 4A. Upload Flow
+
+    POST /api/external/pln/upload
+      ← File CSV/Excel dengan kolom:
+        date, province, city, district, outage_type,
+        start_time, end_time, duration_hours, affected_area
+    
+      → Auto-generate annotations untuk gangguan PLN:
+        INSERT INTO ext_annotations (...)
+        SELECT date, province, 'pln',
+               outage_type || ' PLN: ' || COALESCE(city, province),
+               'Durasi: ' || duration_hours || ' jam. ' || affected_area,
+               CASE WHEN duration_hours > 6 THEN 'critical'
+                    WHEN duration_hours > 2 THEN 'warning'
+                    ELSE 'info' END,
+               '#FFD700', '⚡', TRUE, 'auto_pln'
+        FROM ext_pln_outage
+    
+      → Return: {imported: 120, annotations_created: 120}
+
+* * *
+
+## 5. ANNOTATION SYSTEM
+
+### 5A. Manual Annotation
+
+    POST /api/external/annotation
+      ← Body: {
+          date: "2025-03-15",
+          date_end: null,            // null = 1 hari
+          area_id: "AREA2",         // null = nasional
+          annotation_type: "custom",
+          title: "Cutover Perangkat R03",
+          description: "Penggantian perangkat utama di 50 site R03",
+          severity: "warning",
+          icon: "📌"
+        }
+      → Return: created annotation
+    
+    GET /api/external/annotations
+      ← Query: ?from=2025-01-01 &to=2025-07-31 &type=weather,pln,holiday
+      → Return: list annotations dalam range, sorted by date
+    
+    PUT /api/external/annotation/{id}
+      → Update annotation
+    
+    DELETE /api/external/annotation/{id}
+      → Delete annotation
+
+### 5B. Auto-Generated Annotations
+
+Sistem otomatis membuat annotations dari:
+
+    1. HARI LIBUR (dari ext_calendar):
+       → Setiap hari libur nasional → annotation type="holiday"
+       → icon: 🕌 (Islam), ⛪ (Kristen), 🛕 (Hindu/Buddha), 🏛️ (Nasional)
+       → severity: "info"
+       → Auto-generate saat calendar di-seed
+    
+    2. CUACA EKSTREM (dari ext_weather):
+       → rainfall > 50mm OR wind > 40km/h
+       → type="weather", severity="warning", icon="🌧️"
+       → Auto-generate saat weather data di-upload
+    
+    3. GANGGUAN PLN (dari ext_pln_outage):
+       → Setiap record PLN
+       → type="pln", severity berdasarkan durasi, icon="⚡"
+       → Auto-generate saat PLN data di-upload
+    
+    4. PERIODE RAMADAN:
+       → Date range Ramadan → annotation type="holiday"
+       → title="Bulan Ramadan", icon="🕌"
+       → Penting karena pola gangguan berubah saat Ramadan
+
+### 5C. Annotation Display on Charts
+
+Annotations ditampilkan sebagai **markers pada trend line charts** (di Prompt 7 nanti):
+
+    Cara kerja:
+    1. Frontend request: GET /api/external/annotations?from=&to=
+    2. Untuk setiap annotation, tampilkan:
+       - Vertical line/band pada tanggal di chart
+       - Icon di atas chart
+       - Tooltip saat hover: title + description
+    
+    Contoh pada trend line SLA bulanan:
+    
+      SLA%
+      95 ┤                    
+      93 ┤──●──●           🕌📌
+      91 ┤        ──●──●──│──●──●──
+      89 ┤                │        ──●
+      87 ┤                │
+         ├──┬──┬──┬──┬──┬──┬──┬──┬──
+          Jan Feb Mar Apr Mei Jun Jul Aug Sep
+                          │
+                          └── "Idul Fitri + Cutover R03"
+                              (vertikal band kuning)
+    
+    Visualisasi:
+      • info    → garis abu tipis dotted
+      • warning → garis kuning/oranye solid  
+      • critical→ band merah semi-transparan
+      • Holiday → garis biru dotted + icon
+
+* * *
+
+## 6. KORELASI SEDERHANA
+
+### 6A. Cuaca × Gangguan
+
+    GET /api/external/correlation/weather
+      ← Query: ?province=Jawa Barat &from=2025-01-01 &to=2025-06-30
+    
+      → Hitung:
+        1. Join ext_weather (per date, per province) dengan
+           noc_tickets (aggregated per date, per area/regional)
+        2. Mapping province → area_id (via master_site lokasi)
+           ATAU simplified: province → regional manual mapping
+        3. Hitung korelasi:
+           - Pearson correlation: rainfall_mm vs daily_ticket_count
+           - Pearson correlation: is_extreme vs daily_ticket_count
+        4. Buat scatter plot data points
+    
+      → Return: {
+          correlation_rainfall_vs_tickets: 0.42,  // 0-1, makin tinggi = makin korelasi
+          correlation_extreme_vs_tickets: 0.68,
+          interpretation: "Korelasi moderat antara curah hujan dan jumlah gangguan",
+          data_points: [
+            {date: "2025-01-01", rainfall_mm: 15.2, tickets: 850},
+            ...
+          ],
+          extreme_impact: {
+            avg_tickets_normal: 800,
+            avg_tickets_extreme: 1250,
+            increase_pct: 56.3
+          }
+        }
+
+### 6B. PLN × Gangguan
+
+    GET /api/external/correlation/pln
+      ← Query: ?province= &from= &to=
+    
+      → Hitung:
+        1. Join ext_pln_outage dengan noc_tickets (per date, area)
+        2. Bandingkan ticket volume pada hari PLN gangguan vs normal
+        3. Filter rc_category = "Power" untuk korelasi lebih spesifik
+    
+      → Return: {
+          correlation_pln_vs_tickets: 0.71,
+          correlation_pln_vs_power_rc: 0.85,
+          interpretation: "Korelasi tinggi antara gangguan PLN dan tiket RC Power",
+          pln_impact: {
+            avg_tickets_no_pln: 800,
+            avg_tickets_with_pln: 1450,
+            avg_power_rc_no_pln: 150,
+            avg_power_rc_with_pln: 520,
+            increase_pct: 81.3
+          }
+        }
+
+### 6C. Hari Kerja vs Libur
+
+    GET /api/external/correlation/calendar
+      ← Query: ?from= &to=
+    
+      → Hitung:
+        1. Join ext_calendar dengan noc_tickets (per date)
+        2. Bandingkan:
+           - Hari Kerja vs Akhir Pekan vs Libur Nasional
+           - Ramadan vs Non-Ramadan
+    
+      → Return: {
+          avg_tickets_weekday: 850,
+          avg_tickets_weekend: 620,
+          avg_tickets_holiday: 580,
+          avg_tickets_ramadan: 920,     // bisa naik karena pola konsumsi listrik
+          weekend_reduction_pct: -27.1,
+          holiday_reduction_pct: -31.8,
+          ramadan_increase_pct: 8.2,
+          interpretation: "Volume turun ~30% saat weekend/libur, naik ~8% saat Ramadan"
+        }
+
+* * *
+
+## 7. FRONTEND — Halaman External Data
+
+### 7A. Navigasi
+
+Update sidebar:
+
+    SIDEBAR:
+      📊 Dashboard
+      📤 Upload
+      🗂️ Master Data
+      🌍 Data Eksternal   ← BARU
+      ⚙️ Settings
+
+### 7B. Layout
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  🌍 Data Eksternal                                            │
+    │                                                               │
+    │  ┌─────────────────────────────────────────────────────────┐ │
+    │  │  Cuaca  │  PLN  │  Kalender  │  Anotasi  │  Korelasi   │ │
+    │  └─────┬───────────────────────────────────────────────────┘ │
+    │        ▼                                                      │
+    │  (Tab content)                                                │
+    └──────────────────────────────────────────────────────────────┘
+
+### 7C. Tab Cuaca
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Data Cuaca (BMKG)                                            │
+    │                                                               │
+    │  Status: 365 hari data tersedia (Jan-Des 2025)               │
+    │  Sumber: BMKG   Provinsi: 5                                  │
+    │                                                               │
+    │  [📥 Upload Data Cuaca CSV]  [📥 Download Template]           │
+    │                                                               │
+    │  ┌─── Data Terakhir ────────────────────────────────────────┐│
+    │  │ Tanggal    │ Provinsi    │ Hujan(mm) │ Suhu │ Kondisi    ││
+    │  ├────────────┼─────────────┼───────────┼──────┼────────────┤│
+    │  │ 2025-07-15 │ Jawa Barat  │ 52.3 🌧️  │ 23°C │ Hujan Lebat││
+    │  │ 2025-07-15 │ DKI Jakarta │ 12.1      │ 29°C │ Berawan    ││
+    │  │ ...        │             │           │      │            ││
+    │  └────────────┴─────────────┴───────────┴──────┴────────────┘│
+    │                                                               │
+    │  ⚠️ 23 hari cuaca ekstrem terdeteksi → 23 anotasi dibuat     │
+    └──────────────────────────────────────────────────────────────┘
+
+### 7D. Tab PLN
+
+    Serupa dengan tab Cuaca — upload CSV + tabel data + auto-anotasi
+
+### 7E. Tab Kalender
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Kalender Indonesia                                           │
+    │                                                               │
+    │  Tahun: [2025 ▾]  [Generate Kalender]                        │
+    │                                                               │
+    │  ┌─── Hari Libur 2025 ──────────────────────────────────────┐│
+    │  │ Tanggal    │ Hari Libur                  │ Tipe    │ Edit ││
+    │  ├────────────┼─────────────────────────────┼─────────┼──────┤│
+    │  │ 01 Jan     │ Tahun Baru 2025             │ Libur   │ [✏️] ││
+    │  │ 27 Jan     │ Isra Mi'raj                 │ Libur   │ [✏️] ││
+    │  │ 29 Jan     │ Imlek 2576                  │ Libur   │ [✏️] ││
+    │  │ 29 Mar     │ Cuti Bersama Nyepi          │ Cuti    │ [✏️] ││
+    │  │ 31 Mar     │ Idul Fitri 1446 H           │ Libur   │ [✏️] ││
+    │  │ ...        │                             │         │      ││
+    │  └────────────┴─────────────────────────────┴─────────┴──────┘│
+    │                                                               │
+    │  📅 Ramadan 2025: 1 Mar - 30 Mar                             │
+    │                                                               │
+    │  [+ Tambah Hari Libur]  [Reset ke Default]                   │
+    └──────────────────────────────────────────────────────────────┘
+
+### 7F. Tab Anotasi
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Anotasi Trend                                [+ Tambah Manual]│
+    │                                                               │
+    │  Filter: Tipe [Semua ▾]  Dari [2025-01] Sampai [2025-07]    │
+    │                                                               │
+    │  ┌─── Daftar Anotasi ───────────────────────────────────────┐│
+    │  │ Tanggal │ Tipe    │ Title                  │ Sev  │ Src  ││
+    │  ├─────────┼─────────┼────────────────────────┼──────┼──────┤│
+    │  │ 31 Mar  │ 🕌 holiday│ Idul Fitri 1446 H    │ info │ auto ││
+    │  │ 15 Apr  │ 🌧️ weather│ Cuaca Ekstrem Jabar  │ warn │ auto ││
+    │  │ 20 May  │ ⚡ pln   │ Pemadaman Bergilir Jkt│ warn │ auto ││
+    │  │ 01 Jun  │ 📌 custom│ Cutover R03           │ warn │ manual│
+    │  └─────────┴─────────┴────────────────────────┴──────┴──────┘│
+    │                                                               │
+    │  ℹ️ Anotasi ditampilkan sebagai marker pada chart trend       │
+    │  di halaman Profiler (Prompt 7)                               │
+    └──────────────────────────────────────────────────────────────┘
+
+### 7G. Tab Korelasi
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  Analisis Korelasi                                [🔄 Hitung] │
+    │                                                               │
+    │  Periode: [2025-01] s/d [2025-07]  Provinsi: [Semua ▾]      │
+    │                                                               │
+    │  ┌─── Cuaca × Gangguan ─────────────────────────────────────┐│
+    │  │                                                           ││
+    │  │  Korelasi curah hujan vs tiket: 0.42 (moderat)            ││
+    │  │  Korelasi cuaca ekstrem vs tiket: 0.68 (kuat)             ││
+    │  │                                                           ││
+    │  │  Dampak cuaca ekstrem:                                    ││
+    │  │  • Hari normal: rata-rata 800 tiket/hari                  ││
+    │  │  • Hari ekstrem: rata-rata 1.250 tiket/hari (+56%)        ││
+    │  │                                                           ││
+    │  │  [Scatter plot: rainfall vs tickets]                      ││
+    │  └──────────────────────────────────────────────────────────┘│
+    │                                                               │
+    │  ┌─── PLN × Gangguan ───────────────────────────────────────┐│
+    │  │                                                           ││
+    │  │  Korelasi gangguan PLN vs tiket: 0.71 (kuat)              ││
+    │  │  Korelasi PLN vs RC Power: 0.85 (sangat kuat)             ││
+    │  │                                                           ││
+    │  │  Dampak gangguan PLN:                                     ││
+    │  │  • Tanpa gangguan PLN: 150 tiket Power/hari               ││
+    │  │  • Dengan gangguan PLN: 520 tiket Power/hari (+247%)      ││
+    │  └──────────────────────────────────────────────────────────┘│
+    │                                                               │
+    │  ┌─── Hari Kerja vs Libur ──────────────────────────────────┐│
+    │  │                                                           ││
+    │  │  Hari Kerja  : rata-rata 850 tiket/hari                   ││
+    │  │  Akhir Pekan : rata-rata 620 tiket/hari (-27%)            ││
+    │  │  Libur Nasional: rata-rata 580 tiket/hari (-32%)          ││
+    │  │  Ramadan     : rata-rata 920 tiket/hari (+8%)             ││
+    │  │                                                           ││
+    │  │  [Bar chart: hari kerja vs weekend vs libur vs ramadan]   ││
+    │  └──────────────────────────────────────────────────────────┘│
+    │                                                               │
+    │  ℹ️ Data cuaca/PLN belum tersedia? Upload di tab Cuaca/PLN.  │
+    │  Korelasi kalender tersedia langsung dari data built-in.      │
+    └──────────────────────────────────────────────────────────────┘
+
+* * *
+
+## 8. API ENDPOINTS SUMMARY
+
+    # Calendar
+    POST   /api/external/calendar/generate     ← {year}
+    GET    /api/external/calendar              ← ?year=&month=&type=
+    PUT    /api/external/calendar/holiday      ← update/add holiday
+    DELETE /api/external/calendar/holiday/{date}
+    
+    # Weather
+    POST   /api/external/weather/upload        ← CSV/Excel file
+    GET    /api/external/weather               ← ?from=&to=&province=
+    GET    /api/external/weather/template      → download template CSV
+    DELETE /api/external/weather               ← ?from=&to=&province= (clear data)
+    
+    # PLN
+    POST   /api/external/pln/upload            ← CSV/Excel file
+    GET    /api/external/pln                   ← ?from=&to=&province=
+    GET    /api/external/pln/template          → download template CSV
+    DELETE /api/external/pln                   ← ?from=&to= (clear data)
+    
+    # Annotations
+    GET    /api/external/annotations           ← ?from=&to=&type=&area_id=
+    POST   /api/external/annotation            ← create manual annotation
+    PUT    /api/external/annotation/{id}       ← update
+    DELETE /api/external/annotation/{id}       ← delete
+    
+    # Correlation
+    GET    /api/external/correlation/weather   ← ?province=&from=&to=
+    GET    /api/external/correlation/pln       ← ?province=&from=&to=
+    GET    /api/external/correlation/calendar  ← ?from=&to=
+
+* * *
+
+## CATATAN PENTING
+
+1. **OPSIONAL**: Semua fitur di prompt ini bersifat opsional. Platformberfungsi penuh tanpa data cuaca/PLN. Jika ext_weather kosong,tab Korelasi Cuaca menampilkan: "Upload data cuaca untuk analisis."
+  
+2. **Mapping Provinsi → Area**: Korelasi butuh mapping lokasi.
+  
+  * Jika master_site punya koordinat → auto-map via provinsi
+  * Jika tidak → user bisa set manual mapping provinsi → area/regional
+  * Simplified: hardcode mapping provinsi → area_id utama
+3. **Annotations di chart**: Implementasi visual anotasi pada chartakan dilakukan di **Prompt 7** (Profiler Temporal). Di prompt inikita hanya menyiapkan data + API. Frontend Prompt 7 akan consume`GET /api/external/annotations?from=&to=` dan render marker.
+  
+4. **Korelasi = analisis sederhana**: Pearson correlation + rata-rata comparison.Bukan advanced statistics. Cukup untuk indikasi awal.
+  
+5. **Calendar generate**: saat schema init → otomatis generate 2025 + 2026.Hari libur di-seed. User bisa add/edit/delete holidays.
+  
+6. **Performance**: ext_weather + ext_pln_outage relatif kecil(~365-730 baris/tahun). Tidak ada concern performa.
+  
+
+* * *
+
+## VALIDASI SETELAH SELESAI
+
+* [ ] Menu "Data Eksternal" muncul di sidebar
+* [ ] Calendar 2025-2026 auto-generated (365+365 baris)
+* [ ] Hari libur 2025-2026 terseed (22+16 entries)
+* [ ] Upload cuaca CSV → data masuk + annotations auto-created untuk extreme
+* [ ] Upload PLN CSV → data masuk + annotations auto-created
+* [ ] Manual annotation: create, edit, delete
+* [ ] `GET /api/external/annotations?from=&to=` return list lengkap
+* [ ] Korelasi kalender: weekday vs weekend vs holiday vs ramadan
+* [ ] Korelasi cuaca: rainfall vs tickets (jika data cuaca tersedia)
+* [ ] Korelasi PLN: pln outage vs power RC tickets (jika data PLN tersedia)
+* [ ] Tab Anotasi: list semua annotations dari semua sumber
+* [ ] Template download (cuaca, PLN) berfungsi

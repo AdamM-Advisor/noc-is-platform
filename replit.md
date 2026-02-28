@@ -26,6 +26,7 @@ backend/
     site.py            - Site CRUD w/ server-side pagination + export
     sla_target.py      - SLA target rules CRUD + resolver + impact
     data_quality.py    - Data quality summary endpoint
+    external.py        - External data: calendar, weather, PLN, annotations, correlation
   services/
     backup_service.py  - Auto-backup logic (retain 3)
     upload_service.py  - Chunk assembly + validation
@@ -37,6 +38,7 @@ backend/
     site_master_processor.py - Process site master + auto-populate hierarchy
     ticket_processor.py - Process ticket data (17 calculated columns)
     summary_service.py - Refresh summary_monthly + summary_weekly
+    calendar_service.py - Calendar generation, holiday seeds 2025-2026, Ramadan ranges
 
 frontend/
   src/
@@ -51,6 +53,7 @@ frontend/
       Dashboard.jsx    - Placeholder with health info
       UploadPage.jsx   - Full processing pipeline UI + coverage matrix + data management
       MasterDataPage.jsx - 5-tab master data management
+      ExternalDataPage.jsx - 5-tab external data (Cuaca, PLN, Kalender, Anotasi, Korelasi)
       SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
       master/
         HierarchyTab.jsx   - Tree view CRUD (Area→Regional→NOP→TO)
@@ -83,6 +86,12 @@ exports/               - Generated reports
 - `summary_monthly` - Monthly aggregated KPIs (by area/regional/nop/to/site)
 - `summary_weekly` - Weekly aggregated KPIs
 - `risk_score_history` - Site risk scores over time
+
+### External Data Tables
+- `ext_weather` - Weather data (BMKG)
+- `ext_pln_outage` - PLN outage data
+- `ext_calendar` (730 rows seed: 2025+2026) - Calendar with holidays, Ramadan
+- `ext_annotations` (34 rows auto-seed) - Trend annotations (holiday/weather/pln/custom)
 
 ### System Tables
 - `saved_views`, `report_history`, `import_logs`, `orphan_log`
@@ -171,6 +180,25 @@ exports/               - Generated reports
 - `GET /api/master/sla-target/resolve` - Resolve target (?site_class&site_flag&area_id)
 - `GET /api/master/sla-target/{id}/impact` - Count affected sites
 - `GET /api/data-quality/summary` - Data quality dashboard summary
+- `POST /api/external/calendar/generate` - Generate calendar for year
+- `GET /api/external/calendar` - List calendar entries (?year&month&type)
+- `PUT /api/external/calendar/holiday` - Add/update holiday
+- `DELETE /api/external/calendar/holiday/{date}` - Remove holiday
+- `POST /api/external/weather/upload` - Upload weather CSV
+- `GET /api/external/weather` - List weather data (?from&to&province)
+- `GET /api/external/weather/template` - Download weather CSV template
+- `DELETE /api/external/weather` - Delete weather data
+- `POST /api/external/pln/upload` - Upload PLN outage CSV
+- `GET /api/external/pln` - List PLN data (?from&to&province)
+- `GET /api/external/pln/template` - Download PLN CSV template
+- `DELETE /api/external/pln` - Delete PLN data
+- `GET /api/external/annotations` - List annotations (?from&to&type&area_id)
+- `POST /api/external/annotation` - Create manual annotation
+- `PUT /api/external/annotation/{id}` - Update annotation
+- `DELETE /api/external/annotation/{id}` - Delete annotation
+- `GET /api/external/correlation/weather` - Weather vs tickets correlation
+- `GET /api/external/correlation/pln` - PLN vs tickets correlation
+- `GET /api/external/correlation/calendar` - Workday vs holiday correlation
 
 ## Key Constraints
 - DuckDB single-writer: only 1 write connection via threading.Lock
