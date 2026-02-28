@@ -420,6 +420,26 @@ TABLES_DDL = [
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """),
+    ("site_risk_scores", """
+        CREATE TABLE IF NOT EXISTS site_risk_scores (
+            site_id VARCHAR NOT NULL,
+            calculated_at TIMESTAMP NOT NULL,
+            risk_score DOUBLE NOT NULL,
+            frequency_score DOUBLE,
+            recency_score DOUBLE,
+            severity_score DOUBLE,
+            mttr_trend_score DOUBLE,
+            repeat_score DOUBLE,
+            device_score DOUBLE,
+            escalation_score DOUBLE,
+            risk_level VARCHAR,
+            top_component VARCHAR,
+            predicted_next VARCHAR,
+            pattern_detected BOOLEAN DEFAULT FALSE,
+            avg_gap_days DOUBLE,
+            PRIMARY KEY (site_id)
+        )
+    """),
 ]
 
 INDEXES_DDL = [

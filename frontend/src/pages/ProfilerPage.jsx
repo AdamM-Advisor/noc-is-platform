@@ -4,6 +4,7 @@ import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, M
 import useProfilerStore from '../stores/profilerStore';
 import TemporalPanel from '../components/profiler/TemporalPanel';
 import GangguanPanel from '../components/profiler/GangguanPanel';
+import PredictivePanel from '../components/profiler/predictive/PredictivePanel';
 
 const LEVEL_OPTIONS = [
   { value: 'area', label: 'Area' },
@@ -127,6 +128,9 @@ export default function ProfilerPage() {
     gangguanTopSites, gangguanFaultHeatmap,
     fetchGangguanCrossDim, fetchGangguanOverview,
     fetchGangguanDistribution, fetchGangguanTopSites, fetchGangguanFaultHeatmap,
+    predictiveLoading,
+    riskScoreData, riskAggregationData, forecastData, slaBreachData,
+    patternData, patternBatchData, maintenanceCalendarData,
   } = useProfilerStore();
 
   useEffect(() => {
@@ -272,6 +276,18 @@ export default function ProfilerPage() {
                 updateUrl();
               }
             }}
+          />
+
+          <PredictivePanel
+            entityLevel={filters.entityLevel}
+            loading={predictiveLoading}
+            riskScore={riskScoreData}
+            riskAggregation={riskAggregationData}
+            forecast={forecastData}
+            slaBreach={slaBreachData}
+            pattern={patternData}
+            patternBatch={patternBatchData}
+            maintenanceCalendar={maintenanceCalendarData}
           />
 
           <ChildrenPanel

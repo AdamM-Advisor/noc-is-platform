@@ -51,6 +51,15 @@ const useProfilerStore = create((set, get) => ({
   gangguanTopSites: null,
   gangguanFaultHeatmap: null,
 
+  predictiveLoading: false,
+  riskScoreData: null,
+  riskAggregationData: null,
+  forecastData: null,
+  slaBreachData: null,
+  patternData: null,
+  patternBatchData: null,
+  maintenanceCalendarData: null,
+
   setFilters: (updates) => {
     set((s) => ({ filters: { ...s.filters, ...updates } }));
   },
@@ -83,6 +92,13 @@ const useProfilerStore = create((set, get) => ({
       gangguanDistribution: null,
       gangguanTopSites: null,
       gangguanFaultHeatmap: null,
+      riskScoreData: null,
+      riskAggregationData: null,
+      forecastData: null,
+      slaBreachData: null,
+      patternData: null,
+      patternBatchData: null,
+      maintenanceCalendarData: null,
     });
   },
 
@@ -120,6 +136,7 @@ const useProfilerStore = create((set, get) => ({
       get().fetchPeerRanking();
       get().fetchTemporalData();
       get().fetchGangguanData();
+      get().fetchPredictiveData();
     } catch (err) {
       set({ profileLoading: false, profileError: err.response?.data?.detail || 'Gagal generate profil' });
     }
@@ -413,6 +430,46 @@ const useProfilerStore = create((set, get) => ({
     } else {
       get().fetchGangguanOverview();
     }
+  },
+
+  fetchPredictiveData: async () => {
+    const { filters } = get();
+    if (!filters.entityId) return;
+    set({ predictiveLoading: true });
+
+    const params = {
+      entity_level: filters.entityLevel,
+      entity_id: filters.entityId,
+      date_from: filters.dateFrom,
+      date_to: filters.dateTo,
+    };
+
+    const fetches = [];
+
+    if (filters.entityLevel === 'site') {
+      fetches.push(
+        axios.get('/api/profiler/risk-score', { params: { site_id: filters.entityId, date_to: filters.dateTo } }).then(r => set({ riskScoreData: r.data })).catch(() => {}),
+        axios.get('/api/profiler/pattern', { params: { site_id: filters.entityId, date_from: filters.dateFrom, date_to: filters.dateTo } }).then(r => set({ patternData: r.data })).catch(() => {}),
+      );
+    } else {
+      fetches.push(
+        axios.get('/api/profiler/risk-aggregation', { params }).then(r => set({ riskAggregationData: r.data })).catch(() => {}),
+      );
+      if (filters.entityLevel === 'to') {
+        fetches.push(
+          axios.get('/api/profiler/pattern-batch', { params }).then(r => set({ patternBatchData: r.data })).catch(() => {}),
+          axios.get('/api/profiler/maintenance-calendar', { params }).then(r => set({ maintenanceCalendarData: r.data })).catch(() => {}),
+        );
+      }
+    }
+
+    fetches.push(
+      axios.get('/api/profiler/forecast', { params: { ...params, horizon: 3 } }).then(r => set({ forecastData: r.data })).catch(() => {}),
+      axios.get('/api/profiler/sla-breach', { params: { ...params, horizon_weeks: 8 } }).then(r => set({ slaBreachData: r.data })).catch(() => {}),
+    );
+
+    await Promise.all(fetches);
+    set({ predictiveLoading: false });
   },
 
   fetchTemporalData: async () => {

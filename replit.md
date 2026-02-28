@@ -1,233 +1,89 @@
-# NOC-IS Analytics Platform v1.0
+# NOC-IS Analytics Platform
 
-Platform analitik NOC (Network Operations Center) berbasis web.
+## Overview
+The NOC-IS Analytics Platform is a web-based Network Operations Center (NOC) analytics platform. It provides comprehensive tools for monitoring, analyzing, and predicting network operational performance. The platform integrates various data sources, including site master data, ticket data, and external information like weather and PLN outages, to offer insights into network health, SLA adherence, and potential risks. Its core purpose is to enhance operational efficiency, enable proactive maintenance, and improve decision-making through advanced analytics and predictive capabilities.
 
-## Tech Stack
-- **Backend**: Python 3.11 / FastAPI (port 8000)
-- **Frontend**: React 18 + Vite (port 5000) + Tailwind CSS + Zustand + Recharts
-- **Database**: DuckDB (file-based OLAP, persistent at `data/noc_analytics.duckdb`)
+Key capabilities include:
+- Data ingestion and processing pipeline with auto-detection and enrichment.
+- Multi-dimensional profiling of network entities (Area, Regional, NOP, TO, Site) with KPIs, behavior analysis, and narrative generation.
+- Predictive analytics for risk scoring, volume forecasting, SLA breach prediction, and maintenance scheduling.
+- Comprehensive master data management for hierarchy, sites, SLA targets, and thresholds.
+- Data quality monitoring and orphan record management.
+- Integration of external data sources for enriched analysis and correlation.
 
-## Project Structure
-```
-backend/
-  main.py              - FastAPI entry point (auto-init schema on startup)
-  config.py            - Paths, limits, constants
-  database.py          - DuckDB connection manager (single-writer lock)
-  routers/
-    health.py          - GET /api/health
-    upload.py          - Upload + detect + process endpoints
-    admin.py           - Backup, restore, danger zone
-    schema.py          - Schema init, status, seed reset
-    threshold.py       - Threshold CRUD
-    imports.py         - Import history CRUD + delete
-    orphans.py         - Orphan management + resolve
-    data.py            - Granular ticket delete
-    hierarchy.py       - Area/Regional/NOP/TO CRUD + tree + stats
-    site.py            - Site CRUD w/ server-side pagination + export
-    sla_target.py      - SLA target rules CRUD + resolver + impact
-    data_quality.py    - Data quality summary endpoint
-    external.py        - External data: calendar, weather, PLN, annotations, correlation
-    profiler.py        - Profiler engine: generate profile, children, peer ranking, filter options, trends, heatmap, child-trends
-    gangguan.py        - Gangguan cross-dimension: overview (severity/fault/RC), cross-dimension, distribution, top-sites
-  services/
-    backup_service.py  - Auto-backup logic (retain 3)
-    upload_service.py  - Chunk assembly + validation
-    schema_service.py  - Schema DDL, seed data, status check
-    enrichment_service.py - Site enrichment rules (class x flag)
-    sla_service.py     - SLA target resolution (priority-based)
-    file_detector.py   - Auto-detect 5 file types by filename + headers
-    header_normalizer.py - Header normalization (Title Case/UPPER_CASE → snake_case)
-    site_master_processor.py - Process site master + auto-populate hierarchy
-    ticket_processor.py - Process ticket data (17 calculated columns)
-    summary_service.py - Refresh summary_monthly + summary_weekly
-    calendar_service.py - Calendar generation, holiday seeds 2025-2026, Ramadan ranges
-    behavior_service.py - Behavior labeling (6 labels), KPI interpretation, narrative generation, recommendations
+## User Preferences
+Not specified.
 
-frontend/
-  src/
-    App.jsx            - Router setup
-    main.jsx           - Entry point
-    api/client.js      - Axios instance + error interceptor
-    components/
-      Layout.jsx       - Sidebar + header + main content
-      LoadingWrapper.jsx - Universal loading/error/empty state
-      DangerZone.jsx   - Danger zone UI pattern with confirmation
-    pages/
-      Dashboard.jsx    - Placeholder with health info
-      UploadPage.jsx   - Full processing pipeline UI + coverage matrix + data management
-      MasterDataPage.jsx - 5-tab master data management
-      ProfilerPage.jsx - 3-Dimension Profiler (entity/waktu/gangguan selector, identity, KPI, children, peer ranking, temporal panel)
-      components/profiler/
-        TemporalPanel.jsx  - Panel 2: Temporal analysis (tabs: trend, heatmap, child decomposition)
-        TrendChart.jsx     - Recharts ComposedChart with trend line, ±2σ band, anomaly dots, annotations
-        HeatmapAdaptive.jsx - CSS grid heatmap (adaptive: week×day or day×hour)
-        ChildTrendBar.jsx  - Diverging bar chart for child entity trend decomposition
-        GangguanPanel.jsx  - Panel 3: Gangguan analysis (Mode A: overview, Mode B: cross-dimension)
-      ExternalDataPage.jsx - 5-tab external data (Cuaca, PLN, Kalender, Anotasi, Korelasi)
-      SettingsPage.jsx - Schema status, DB info, backup/restore, danger zone
-      master/
-        HierarchyTab.jsx   - Tree view CRUD (Area→Regional→NOP→TO)
-        SiteTab.jsx        - Server-side paginated site list (50/pg) + stats + enrichment panel
-        SlaTargetTab.jsx   - SLA target rules + resolver tester
-        ThresholdTab.jsx   - Inline-edit threshold params by category
-        DataQualityTab.jsx - Data quality dashboard + orphan management
-    stores/
-      cacheStore.js    - Zustand cache with 5-min TTL
-      profilerStore.js - Profiler state: filters, profile data, children, peer ranking, trends, heatmap, child-trends, annotations
+## System Architecture
 
-data/                  - Database directory (persistent)
-  backups/             - Auto-backup directory (max 3)
-uploads/               - Uploaded files
-temp_chunks/           - Temp chunks during upload
-exports/               - Generated reports
-```
+The platform follows a client-server architecture with a Python/FastAPI backend and a React/Vite frontend. Data persistence and analytical processing are handled by DuckDB.
 
-## Database Schema (15 tables)
-### Master Tables
-- `master_area` (4 rows seed) - Area hierarchy
-- `master_regional` - Regional hierarchy (FK to area, auto-populated from site master)
-- `master_nop` - NOP hierarchy (FK to regional, auto-populated from site master)
-- `master_to` - TO hierarchy (FK to nop, auto-populated from site master)
-- `master_site` - Site master (78K+ rows, enrichment-derived columns)
-- `master_sla_target` (9 rows seed) - Priority-based SLA targets
-- `master_threshold` (38 rows seed) - Configurable analytics parameters
+**UI/UX Decisions:**
+- The frontend uses React 18 with Vite for a fast development experience and Tailwind CSS for utility-first styling.
+- Zustand is used for state management, and Recharts is employed for data visualization, providing interactive and informative charts (e.g., ComposedChart for trends, RadarChart for risk, ScatterChart for patterns).
+- Common UI patterns include universal loading/error/empty states, and a "Danger Zone" component with confirmation for sensitive operations.
+- The dashboard provides health information and serves as a central point for navigation. Specialized pages exist for data upload, master data management, profiling, external data, and settings.
 
-### Data Tables
-- `noc_tickets` - Raw ticket data (72 raw + 17 calculated columns)
-- `summary_monthly` - Monthly aggregated KPIs (by area/regional/nop/to/site)
-- `summary_weekly` - Weekly aggregated KPIs
-- `risk_score_history` - Site risk scores over time
+**Technical Implementations:**
+- **Backend (FastAPI)**:
+    - Provides a RESTful API with structured routers for health checks, data upload, administration, schema management, threshold configuration, master data (hierarchy, site, SLA targets), data quality, external data, profiling, and predictive analytics.
+    - Utilizes services for encapsulating business logic such as backup, upload processing, schema initialization, site enrichment, SLA resolution, file detection, header normalization, data processing (site master, tickets), summary generation, calendar management, behavior analysis, and predictive model execution.
+    - Employs DuckDB as an embedded OLAP database, managed with a single-writer lock for concurrency control.
+- **Frontend (React)**:
+    - `App.jsx` handles routing. `Layout.jsx` defines the global structure with sidebar, header, and main content.
+    - API interactions are managed via Axios, including an error interceptor.
+    - Specific pages and components are dedicated to various functionalities, such as `UploadPage` for the processing pipeline, `MasterDataPage` for managing hierarchical and site data, `ProfilerPage` for multi-dimensional analytics, `PredictivePanel` for displaying predictive insights (risk, forecast, SLA breach, patterns, maintenance calendar), and `ExternalDataPage` for external data management.
+    - Zustand stores (`cacheStore`, `profilerStore`) manage application state and cache data with a 5-minute TTL.
 
-### External Data Tables
-- `ext_weather` - Weather data (BMKG)
-- `ext_pln_outage` - PLN outage data
-- `ext_calendar` (730 rows seed: 2025+2026) - Calendar with holidays, Ramadan
-- `ext_annotations` (34 rows auto-seed) - Trend annotations (holiday/weather/pln/custom)
+**Feature Specifications:**
+- **Data Ingestion**: Supports single and chunked file uploads. Auto-detects 5 file types based on filename and headers. Normalizes headers to snake_case.
+- **Data Processing**:
+    - **Site Master**: Auto-populates hierarchy (Regional, NOP, TO) and enriches sites based on rules. Supports bulk updates and imports.
+    - **Tickets**: Calculates 17 derived columns (time metrics, SLA status, classification, hierarchy, source). Resolves hierarchy and handles duplicate detection (key: `ticket_number_inap` + `calc_source`).
+    - **Summarization**: Refreshes `summary_monthly` and `summary_weekly` tables for affected periods.
+- **Data Management**:
+    - CRUD operations for `Area`, `Regional`, `NOP`, `TO`, `Site`, `SLA Target`, and `Threshold`.
+    - Server-side pagination and export functionality for site master data.
+    - Import history tracking and granular data deletion by import ID or period.
+    - Orphan management for unmapped tickets.
+- **Analytics & Profiling**:
+    - **Profiler Engine**: Generates entity profiles including KPIs, behavior labels (6 types), narrative, and recommendations. Supports temporal analysis (trend, heatmap, child decomposition), peer ranking, and cross-dimensional `gangguan` (disruption) analysis.
+    - **Predictive Analytics**:
+        - **Risk Score**: Calculates site-level risk based on 7 weighted components. Aggregates risk at higher hierarchical levels.
+        - **Forecast**: Uses WMA with trend and seasonal components to predict volume.
+        - **SLA Breach Prediction**: Projects SLA performance and identifies potential breach weeks for entities.
+        - **Pattern Detection**: Identifies recurring patterns in ticket data.
+        - **Maintenance Calendar**: Schedules maintenance based on predictive insights.
+- **External Data**: Manages and integrates weather (BMKG), PLN outage, and calendar data (holidays, Ramadan). Supports custom annotations and correlation analysis against ticket data.
+- **System Administration**: Provides functionalities for database backup/restore, schema initialization/status check, seeding reset, and data deletion.
 
-### System Tables
-- `saved_views`, `report_history`, `import_logs`, `orphan_log`
+**System Design Choices:**
+- **DuckDB**: Chosen for its file-based OLAP capabilities, enabling efficient analytical queries directly on the dataset.
+- **Single-Writer Lock**: Implemented for DuckDB write operations to ensure data integrity due to its embedded nature.
+- **Schema Auto-Initialization**: Ensures the database is ready on application startup if empty.
+- **Configurable Thresholds**: Allows dynamic adjustment of analytical parameters.
+- **Priority-based SLA Resolution**: Determines SLA targets based on a defined priority hierarchy.
 
-### Views
-- `v_hierarchy` - Denormalized TO->NOP->Regional->Area join
+## External Dependencies
 
-## Upload & Processing Pipeline
-1. User uploads file (single or chunked)
-2. File type auto-detected from filename + headers (5 types: site_master, swfm_event, swfm_incident, swfm_realtime, fault_center)
-3. Headers normalized to snake_case
-4. Processing:
-   - Site master: auto-populate hierarchy (regional/nop/to), enrich sites, UPSERT
-   - Tickets: 17 calculated columns, hierarchy resolution, duplicate detection, area auto-mapping
-5. Summary tables refreshed for affected periods
-6. Import logged to import_logs
-
-### 17 Calculated Columns
-- 4 time: response_time, repair_time, restore_time, detection_time (minutes)
-- 3 SLA: sla_duration, sla_target, is_sla_met
-- 7 classification: hour_of_day, day_of_week, week_of_month, month, year, year_month, year_week
-- 4 hierarchy: area_id, regional_id, nop_id, to_id (resolved)
-- 1 source: calc_source (file type)
-
-### Duplicate Detection
-- Key: ticket_number_inap + calc_source
-- Same ticket from different sources = NOT duplicate
-- Re-upload same file = duplicates skipped
-
-## API Endpoints
-- `GET /api/health` - System health check
-- `POST /api/upload/single` - Single file upload (< 10MB)
-- `POST /api/upload/chunk` - Upload chunk
-- `POST /api/upload/chunk/complete` - Assemble chunks
-- `GET /api/upload/chunk/status/{id}` - Chunk status
-- `POST /api/upload/detect` - Detect file type from uploaded file
-- `POST /api/upload/process` - Start processing pipeline
-- `GET /api/upload/process/status/{job_id}` - Processing progress/status
-- `GET /api/imports` - List import history
-- `GET /api/imports/{id}` - Import detail
-- `DELETE /api/imports/{id}` - Delete import + related data
-- `GET /api/orphans` - List unresolved orphans
-- `PUT /api/orphans/{id}/resolve` - Resolve orphan + remap tickets
-- `GET /api/data/coverage` - Coverage matrix (year_month × source with counts)
-- `GET /api/data/tickets/count` - Preview count (?year_month=&source=&from_month=&to_month=)
-- `DELETE /api/data/tickets/by-period` - Delete by year_month + source
-- `DELETE /api/data/tickets/by-import/{id}` - Delete by import
-- `DELETE /api/data/tickets/by-period-range` - Delete by month range
-- `DELETE /api/data/tickets/by-source` - Delete all by source
-- `GET /api/admin/backups` - List backups
-- `POST /api/admin/backup` - Create backup
-- `POST /api/admin/restore` - Restore from backup
-- `GET /api/admin/db-info` - Database info
-- `POST /api/admin/delete-data` - Delete non-master data
-- `POST /api/admin/reset-database` - Full database reset
-- `POST /api/schema/init` - Initialize all tables + seed data
-- `GET /api/schema/status` - Check table existence and row counts
-- `POST /api/schema/seed-reset` - Reset threshold & SLA seeds
-- `GET /api/threshold` - All thresholds grouped by category
-- `GET /api/threshold/{key}` - Single threshold
-- `PUT /api/threshold/{key}` - Update threshold value
-- `GET/POST /api/master/area` - List/create areas
-- `PUT/DELETE /api/master/area/{id}` - Update/soft-delete area
-- `GET/POST /api/master/regional` - List/create regionals (?area_id=)
-- `PUT/DELETE /api/master/regional/{id}` - Update/soft-delete regional
-- `GET/POST /api/master/nop` - List/create NOPs (?regional_id=)
-- `PUT/DELETE /api/master/nop/{id}` - Update/soft-delete NOP
-- `GET/POST /api/master/to` - List/create TOs (?nop_id=)
-- `PUT/DELETE /api/master/to/{id}` - Update/soft-delete TO
-- `GET /api/master/hierarchy/tree` - Full nested hierarchy tree
-- `GET /api/master/hierarchy/stats` - Count per level
-- `GET /api/master/site` - Paginated site list (?page&per_page&filters&sort)
-- `GET /api/master/site/{id}` - Single site detail
-- `PUT /api/master/site/{id}` - Update site (auto-enriches on class/flag change)
-- `POST /api/master/site/export` - Export filtered CSV
-- `GET /api/master/site/stats` - Site statistics (total, active, by_class, by_flag, enrichment)
-- `GET /api/master/site/template/{type}` - Download CSV template (coordinates/equipment/enriched)
-- `POST /api/master/site/bulk-update` - JSON bulk update (coordinates/equipment/mixed)
-- `POST /api/master/site/bulk-update/upload` - File CSV/Excel bulk update
-- `POST /api/master/site/import-enriched` - Import enriched site master
-- `POST /api/master/site/recalculate-derived` - Batch recalculate derived columns
-- `GET /api/master/sla-target` - List SLA target rules
-- `POST /api/master/sla-target` - Create SLA rule
-- `PUT /api/master/sla-target/{id}` - Update SLA rule
-- `DELETE /api/master/sla-target/{id}` - Delete SLA rule (protect default)
-- `GET /api/master/sla-target/resolve` - Resolve target (?site_class&site_flag&area_id)
-- `GET /api/master/sla-target/{id}/impact` - Count affected sites
-- `GET /api/data-quality/summary` - Data quality dashboard summary
-- `POST /api/external/calendar/generate` - Generate calendar for year
-- `GET /api/external/calendar` - List calendar entries (?year&month&type)
-- `PUT /api/external/calendar/holiday` - Add/update holiday
-- `DELETE /api/external/calendar/holiday/{date}` - Remove holiday
-- `POST /api/external/weather/upload` - Upload weather CSV
-- `GET /api/external/weather` - List weather data (?from&to&province)
-- `GET /api/external/weather/template` - Download weather CSV template
-- `DELETE /api/external/weather` - Delete weather data
-- `POST /api/external/pln/upload` - Upload PLN outage CSV
-- `GET /api/external/pln` - List PLN data (?from&to&province)
-- `GET /api/external/pln/template` - Download PLN CSV template
-- `DELETE /api/external/pln` - Delete PLN data
-- `GET /api/external/annotations` - List annotations (?from&to&type&area_id)
-- `POST /api/external/annotation` - Create manual annotation
-- `PUT /api/external/annotation/{id}` - Update annotation
-- `DELETE /api/external/annotation/{id}` - Delete annotation
-- `GET /api/external/correlation/weather` - Weather vs tickets correlation
-- `GET /api/external/correlation/pln` - PLN vs tickets correlation
-- `GET /api/external/correlation/calendar` - Workday vs holiday correlation
-- `POST /api/profiler/generate` - Generate full profile (identity+KPIs+behavior+narrative+recommendations)
-- `GET /api/profiler/children` - Paginated child entities with KPIs+behavior
-- `GET /api/profiler/peer-ranking` - Peer comparison with percentile+narrative
-- `GET /api/profiler/filter-options` - Cascading dropdown options (areas/regionals/nops/tos/periods)
-
-## Key Constraints
-- DuckDB single-writer: only 1 write connection via threading.Lock
-- Memory limit: 512MB, Threads: 2
-- Chunk size: 5MB, Max single upload: 10MB
-- Max backups retained: 3
-- Frontend proxies /api/* to backend via Vite config
-- Schema auto-initializes on startup if database is empty
-- Only 1 upload processing job at a time (single-writer constraint)
-
-## Dependencies
-- **Python**: fastapi, uvicorn, duckdb, python-multipart, aiofiles, psutil, pandas, openpyxl
-- **Frontend**: react, react-dom, react-router-dom, axios, zustand, recharts, lucide-react, vite, tailwindcss
-
-## Workflows
-- **Backend API**: uvicorn on port 8000 with --reload
-- **Start application**: Vite dev server on port 5000
+- **Python Libraries**:
+    - `fastapi`: Web framework for the backend API.
+    - `uvicorn`: ASGI server for running FastAPI.
+    - `duckdb`: Embedded analytical database.
+    - `python-multipart`: For handling form data, especially file uploads.
+    - `aiofiles`: Asynchronous file operations.
+    - `psutil`: System utility for process information (e.g., memory usage).
+    - `pandas`: Data manipulation and analysis.
+    - `openpyxl`: For reading/writing Excel files.
+- **Frontend Libraries**:
+    - `react`, `react-dom`: JavaScript library for building user interfaces.
+    - `react-router-dom`: Declarative routing for React.
+    - `axios`: Promise-based HTTP client for the browser and Node.js.
+    - `zustand`: Small, fast, and scalable bear-bones state-management solution.
+    - `recharts`: Composable charting library built with React and D3.
+    - `lucide-react`: A collection of open-source icons.
+    - `vite`: Next-generation frontend tooling.
+    - `tailwindcss`: Utility-first CSS framework.
+- **External Data Sources**:
+    - BMKG (Badan Meteorologi, Klimatologi, dan Geofisika): For weather data.
+    - PLN (Perusahaan Listrik Negara): For power outage data.
