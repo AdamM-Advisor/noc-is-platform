@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["glibcLocales", "openssl"]
+packages = ["cairo", "ffmpeg-full", "fontconfig", "freetype", "gdk-pixbuf", "ghostscript", "glib", "glibcLocales", "gobject-introspection", "gtk3", "harfbuzz", "libffi", "openssl", "pango", "pkg-config", "qhull", "tcl", "tk"]
 
 [workflows]
 runButton = "Project"

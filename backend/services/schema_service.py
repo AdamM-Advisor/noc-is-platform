@@ -329,19 +329,24 @@ TABLES_DDL = [
     ("report_history", """
         CREATE TABLE IF NOT EXISTS report_history (
             id INTEGER PRIMARY KEY,
-            report_type VARCHAR NOT NULL,
+            report_type VARCHAR(20) NOT NULL,
             period_start DATE NOT NULL,
             period_end DATE NOT NULL,
-            entity_level VARCHAR NOT NULL,
-            entity_id VARCHAR NOT NULL,
+            period_label VARCHAR(100),
+            entity_level VARCHAR(20) NOT NULL,
+            entity_id VARCHAR(50) NOT NULL,
+            entity_name VARCHAR(200),
             generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            generated_by VARCHAR,
-            narrative_mode VARCHAR,
-            file_path VARCHAR,
-            file_size_kb INTEGER,
-            status VARCHAR DEFAULT 'completed',
-            metadata VARCHAR,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            generated_by VARCHAR(100) DEFAULT 'manual',
+            generation_time_ms INTEGER,
+            ai_enhanced BOOLEAN DEFAULT FALSE,
+            pdf_path VARCHAR(500),
+            pdf_size_kb INTEGER,
+            excel_path VARCHAR(500),
+            excel_size_kb INTEGER,
+            status VARCHAR(20) DEFAULT 'pending',
+            error_message TEXT,
+            metadata TEXT
         )
     """),
     ("import_logs", """
@@ -567,6 +572,18 @@ def _migrate_saved_views(conn):
                     conn.execute(ddl)
                     break
             logger.info("Migrated saved_views table to new schema")
+    except Exception:
+        pass
+
+    try:
+        cols = [r[0] for r in conn.execute("DESCRIBE report_history").fetchall()]
+        if "pdf_path" not in cols:
+            conn.execute("DROP TABLE IF EXISTS report_history")
+            for name, ddl in TABLES_DDL:
+                if name == "report_history":
+                    conn.execute(ddl)
+                    break
+            logger.info("Migrated report_history table to new schema")
     except Exception:
         pass
 

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section-title">1. Ringkasan Eksekutif</div>
+<div class="narrative">{{ executive_narrative }}</div>
+
+<div class="section-title">2. KPI Minggu Ini vs Minggu Lalu</div>
+<table>
+    <thead>
+        <tr>
+            <th>KPI</th>
+            <th>Minggu Ini</th>
+            <th>Minggu Lalu</th>
+            <th>Delta</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Volume</td>
+            <td>{{ kpis.total_volume }}</td>
+            <td>{{ kpis_prev.total_volume }}</td>
+            <td class="{% if deltas.volume_mom_pct > 0 %}delta-down{% elif deltas.volume_mom_pct < 0 %}delta-up{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.volume_mom_pct) }}%</td>
+            <td>{% if deltas.volume_mom_pct <= 0 %}🟢{% elif deltas.volume_mom_pct <= 10 %}🟡{% else %}🔴{% endif %}</td>
+        </tr>
+        <tr>
+            <td>SLA %</td>
+            <td class="{% if kpis.sla_pct >= 90 %}sla-good{% elif kpis.sla_pct >= 85 %}sla-warn{% else %}sla-bad{% endif %}">{{ '%.1f'|format(kpis.sla_pct) }}%</td>
+            <td>{{ '%.1f'|format(kpis_prev.sla_pct) }}%</td>
+            <td class="{% if deltas.sla_mom_pp > 0 %}delta-up{% elif deltas.sla_mom_pp < 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.sla_mom_pp) }}pp</td>
+            <td>{% if kpis.sla_pct >= 90 %}🟢{% elif kpis.sla_pct >= 85 %}🟡{% else %}🔴{% endif %}</td>
+        </tr>
+        <tr>
+            <td>MTTR (menit)</td>
+            <td>{{ '%.0f'|format(kpis.avg_mttr_min) }}</td>
+            <td>{{ '%.0f'|format(kpis_prev.avg_mttr_min) }}</td>
+            <td class="{% if deltas.mttr_mom_pct < 0 %}delta-up{% elif deltas.mttr_mom_pct > 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.mttr_mom_pct) }}%</td>
+            <td>{% if kpis.avg_mttr_min <= 240 %}🟢{% elif kpis.avg_mttr_min <= 480 %}🟡{% else %}🔴{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Eskalasi %</td>
+            <td>{{ '%.1f'|format(kpis.escalation_pct) }}%</td>
+            <td>{{ '%.1f'|format(kpis_prev.escalation_pct) }}%</td>
+            <td class="{% if deltas.esc_mom_pp < 0 %}delta-up{% elif deltas.esc_mom_pp > 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.esc_mom_pp) }}pp</td>
+            <td>{% if kpis.escalation_pct <= 3 %}🟢{% elif kpis.escalation_pct <= 7 %}🟡{% else %}🔴{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Auto-Resolve %</td>
+            <td>{{ '%.1f'|format(kpis.auto_resolve_pct) }}%</td>
+            <td>{{ '%.1f'|format(kpis_prev.auto_resolve_pct) }}%</td>
+            <td class="{% if deltas.auto_mom_pp > 0 %}delta-up{% elif deltas.auto_mom_pp < 0 %}delta-down{% else %}delta-flat{% endif %}">{{ '%+.1f'|format(deltas.auto_mom_pp) }}pp</td>
+            <td>{% if kpis.auto_resolve_pct >= 60 %}🟢{% elif kpis.auto_resolve_pct >= 40 %}🟡{% else %}🔴{% endif %}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="section-title">3. Tren</div>
+<div class="chart-container">
+    {% if trend_chart_b64 %}
+    <img src="data:image/png;base64,{{ trend_chart_b64 }}" alt="Tren SLA" />
+    {% endif %}
+</div>
+<p>{{ trend_narrative }}</p>
+
+<div class="section-title">4. Top 10 Entitas Bermasalah</div>
+{% if top_problem_children %}
+<table>
+    <thead>
+        <tr><th>#</th><th>Entitas</th><th>Volume</th><th>SLA %</th><th>MTTR</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+        {% for c in top_problem_children[:10] %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.volume }}</td>
+            <td class="{% if c.sla_pct >= 90 %}sla-good{% elif c.sla_pct >= 85 %}sla-warn{% else %}sla-bad{% endif %}">{{ '%.1f'|format(c.sla_pct) }}%</td>
+            <td>{{ '%.0f'|format(c.mttr) }}m</td>
+            <td>{{ c.status }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Tidak ada data.</p>
+{% endif %}
+
+{% if recommendations %}
+<div class="page-break"></div>
+<div class="section-title">5. Rekomendasi Minggu Depan</div>
+{% for rec in recommendations[:5] %}
+<div class="recommendation recommendation-{{ rec.priority_class }}">
+    <strong>{{ rec.priority_icon }} {{ rec.title }}</strong><br>
+    {{ rec.message }}<br>
+    {% if rec.action %}<span style="color:#1e40af;">&#9654; AKSI: {{ rec.action }}</span>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

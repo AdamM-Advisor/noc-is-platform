@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section-title">1. Year in Review</div>
+<div class="narrative">{{ executive_narrative }}</div>
+
+<div class="kpi-grid">
+    <div class="kpi-box">
+        <div class="label">Total Volume</div>
+        <div class="value">{{ kpis.total_volume }}</div>
+    </div>
+    <div class="kpi-box">
+        <div class="label">SLA Rata-rata</div>
+        <div class="value {% if kpis.sla_pct >= 90 %}sla-good{% elif kpis.sla_pct >= 85 %}sla-warn{% else %}sla-bad{% endif %}">{{ '%.1f'|format(kpis.sla_pct) }}%</div>
+    </div>
+    <div class="kpi-box">
+        <div class="label">MTTR Rata-rata</div>
+        <div class="value">{{ '%.0f'|format(kpis.avg_mttr_min) }}m</div>
+    </div>
+    <div class="kpi-box">
+        <div class="label">Eskalasi</div>
+        <div class="value">{{ '%.1f'|format(kpis.escalation_pct) }}%</div>
+    </div>
+    <div class="kpi-box">
+        <div class="label">Auto-Resolve</div>
+        <div class="value">{{ '%.1f'|format(kpis.auto_resolve_pct) }}%</div>
+    </div>
+</div>
+
+<div class="section-title">2. Tren Tahunan</div>
+<div class="chart-container">
+    {% if trend_chart_b64 %}
+    <img src="data:image/png;base64,{{ trend_chart_b64 }}" alt="Tren SLA Tahunan" />
+    {% endif %}
+</div>
+<p>{{ trend_narrative }}</p>
+
+{% if mttr_chart_b64 %}
+<div class="chart-container">
+    <img src="data:image/png;base64,{{ mttr_chart_b64 }}" alt="Tren MTTR" />
+</div>
+{% endif %}
+
+{% if vol_chart_b64 %}
+<div class="section-title">3. Volume per Periode</div>
+<div class="chart-container">
+    <img src="data:image/png;base64,{{ vol_chart_b64 }}" alt="Volume" />
+</div>
+{% endif %}
+
+{% if radar_b64 %}
+<div class="section-title">4. Profil KPI</div>
+<div class="chart-container">
+    <img src="data:image/png;base64,{{ radar_b64 }}" alt="Radar KPI" />
+</div>
+{% endif %}
+
+<div class="page-break"></div>
+
+<div class="section-title">5. Ranking Sub-Entitas</div>
+{% if children %}
+<table>
+    <thead>
+        <tr><th>#</th><th>Entitas</th><th>Volume</th><th>SLA %</th><th>MTTR</th><th>Eskalasi</th><th>Auto-Resolve</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+        {% for c in children %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.volume }}</td>
+            <td class="{% if c.sla_pct >= 90 %}sla-good{% elif c.sla_pct >= 85 %}sla-warn{% else %}sla-bad{% endif %}">{{ '%.1f'|format(c.sla_pct) }}%</td>
+            <td>{{ '%.0f'|format(c.mttr) }}m</td>
+            <td>{{ '%.1f'|format(c.escalation_pct) }}%</td>
+            <td>{{ '%.1f'|format(c.auto_resolve_pct) }}%</td>
+            <td>{{ c.status }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if recommendations %}
+<div class="page-break"></div>
+<div class="section-title">6. Rekomendasi Strategis</div>
+{% for rec in recommendations[:5] %}
+<div class="recommendation recommendation-{{ rec.priority_class }}">
+    <strong>{{ rec.priority_icon }} {{ rec.title }}</strong><br>
+    {{ rec.message }}<br>
+    {% if rec.action %}<span style="color:#1e40af;">&#9654; AKSI: {{ rec.action }}</span>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

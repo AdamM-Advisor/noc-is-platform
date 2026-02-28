@@ -9,6 +9,7 @@ import SettingsPage from './pages/SettingsPage';
 import ReportCardPage from './pages/ReportCardPage';
 import SavedViewsPage from './pages/SavedViewsPage';
 import ComparisonPage from './pages/ComparisonPage';
+import ReportGeneratorPage from './pages/ReportGeneratorPage';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="report-card" element={<ReportCardPage />} />
           <Route path="saved-views" element={<SavedViewsPage />} />
           <Route path="comparison" element={<ComparisonPage />} />
+          <Route path="reports" element={<ReportGeneratorPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="master-data" element={<MasterDataPage />} />
           <Route path="external-data" element={<ExternalDataPage />} />

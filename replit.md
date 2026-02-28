@@ -42,6 +42,7 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
 - **Threshold Settings**: Configurable threshold parameters organized in 12 groups (MTTR, Escalation, Auto-resolve, Repeat, Trend, Anomaly, Risk, Behavior, Seasonal, Pattern, Capacity, Display). Accessible via Settings → Threshold tab.
 - **Saved Views**: Save Profiler configurations with snapshot KPIs. Features: CRUD with pinning (max 5 pinned), sort ordering, access tracking, delta calculation (snapshot vs current KPI values with improving/worsening/stable quality indicators). Frontend shows pinned-first + recent list, search filter, and action buttons (Buka, Compare, Edit, Delete, Pin). Save dialog available from Profiler toolbar.
 - **Comparison Mode**: Compare two entity profiles side-by-side. Auto-detects comparison type (Temporal/Entity/Fault). Features: KPI delta analysis with percentage changes, side-by-side KPI table, radar overlay chart (normalized 0-100, lower-is-better KPIs inverted), child entity delta table, composition similarity check (Entity type only, warns if site mix differs >20pp), and AI-generated comparison narrative in Indonesian. Backend endpoint: POST /api/comparison/generate.
+- **Report Generator & Export**: Full report generation system with 5 template types (Daily/Weekly/Monthly/Quarterly/Annual). Features: PDF export via WeasyPrint with embedded matplotlib charts, Excel export via openpyxl with conditional SLA coloring (for monthly/quarterly/annual), report history with re-download/preview/delete, entity-level scope selection (Nasional/Area/Regional/Witel), period picker adapting per report type, and HTML preview modal. Backend services: chart_renderer.py (matplotlib → base64 PNG), excel_service.py (openpyxl), report_service.py (ReportGenerator with Jinja2 templates). Templates in backend/templates/reports/. API endpoints: POST /api/reports/generate, GET /api/reports, GET /api/reports/{id}/pdf, /excel, /preview, DELETE /api/reports/{id}.
 - **Data Ingestion**: Supports single and chunked file uploads. Auto-detects 5 file types based on filename and headers. Normalizes headers to snake_case.
 - **Data Processing**:
     - **Site Master**: Auto-populates hierarchy (Regional, NOP, TO) and enriches sites based on rules. Supports bulk updates and imports.
@@ -81,6 +82,9 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
     - `psutil`: System utility for process information (e.g., memory usage).
     - `pandas`: Data manipulation and analysis.
     - `openpyxl`: For reading/writing Excel files.
+    - `weasyprint`: HTML/CSS to PDF conversion for report generation.
+    - `matplotlib`: Server-side chart rendering (trend lines, bar charts, radar, pareto, heatmaps).
+    - `jinja2`: HTML template engine for report templates.
 - **Frontend Libraries**:
     - `react`, `react-dom`: JavaScript library for building user interfaces.
     - `react-router-dom`: Declarative routing for React.

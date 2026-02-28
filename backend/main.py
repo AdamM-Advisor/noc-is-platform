@@ -12,6 +12,7 @@ from backend.routers import gangguan
 from backend.routers import predictive
 from backend.routers import dashboard, report_card
 from backend.routers import saved_views, comparison
+from backend.routers import reports
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(report_card.router, prefix="/api")
 app.include_router(saved_views.router, prefix="/api")
 app.include_router(comparison.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 
 
 @app.on_event("startup")
