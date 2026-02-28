@@ -54,6 +54,7 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
     - Server-side pagination and export functionality for site master data.
     - Import history tracking and granular data deletion by import ID or period.
     - Orphan management for unmapped tickets.
+    - **Hierarchy Re-sync**: "Sinkronisasi Hierarki" button on Upload page re-resolves all tickets' hierarchy columns (calc_area_id, calc_regional_id, calc_nop_id, calc_to_id) against latest master data. Uses CTAS (Create Table As Select) with pre-materialized lookup temp tables + atomic table swap (rename pattern) for DuckDB performance — processes 4.1M tickets in ~40 seconds. Always recomputes from scratch (not incremental). Refreshes orphan log, summaries, and import orphan counts. Backend: `backend/services/resync_service.py`, endpoints: `POST /api/data/resync`, `GET /api/data/resync/status/{job_id}`.
 - **Analytics & Profiling**:
     - **Profiler Engine**: Generates entity profiles including KPIs, behavior labels (6 types), narrative, and recommendations. Supports temporal analysis (trend, heatmap, child decomposition), peer ranking, and cross-dimensional `gangguan` (disruption) analysis.
     - **Predictive Analytics**:

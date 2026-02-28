@@ -69,12 +69,17 @@ function UploadPage() {
   const [rangePreview, setRangePreview] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+  const [resyncStatus, setResyncStatus] = useState(null);
+  const [resyncResult, setResyncResult] = useState(null);
+  const resyncPollRef = useRef(null);
+
   useEffect(() => {
     loadImportHistory();
     loadCoverage();
     loadMgmtImports();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (resyncPollRef.current) clearInterval(resyncPollRef.current);
     };
   }, []);
 
@@ -119,6 +124,45 @@ function UploadPage() {
       setError('Gagal memuat data coverage');
     }
     setCoverageLoading(false);
+  };
+
+  const startResync = async () => {
+    try {
+      setResyncResult(null);
+      setResyncStatus({ phase: 'starting', detail: 'Memulai sinkronisasi...' });
+      const res = await client.post('/data/resync');
+      const jobId = res.data.job_id;
+
+      resyncPollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await client.get(`/data/resync/status/${jobId}`);
+          const job = statusRes.data;
+          setResyncStatus(job.progress);
+
+          if (job.status === 'completed') {
+            clearInterval(resyncPollRef.current);
+            resyncPollRef.current = null;
+            setResyncResult(job.result);
+            setResyncStatus(null);
+            loadCoverage();
+            loadImportHistory();
+          } else if (job.status === 'failed') {
+            clearInterval(resyncPollRef.current);
+            resyncPollRef.current = null;
+            setResyncStatus(null);
+            setError(job.error || 'Sinkronisasi gagal');
+          }
+        } catch (e) {
+          clearInterval(resyncPollRef.current);
+          resyncPollRef.current = null;
+          setResyncStatus(null);
+          setError('Gagal memeriksa status sinkronisasi');
+        }
+      }, 2000);
+    } catch (e) {
+      setResyncStatus(null);
+      setError(e.response?.data?.detail || 'Gagal memulai sinkronisasi');
+    }
   };
 
   const loadMgmtImports = async () => {
@@ -738,6 +782,14 @@ function UploadPage() {
               </div>
             )}
             <button
+              onClick={startResync}
+              disabled={!!resyncStatus || coverageLoading}
+              className="flex items-center gap-1 text-xs text-white bg-[#1E40AF] hover:bg-[#1B2A4A] border border-[#1E40AF] rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={12} className={resyncStatus ? 'animate-spin' : ''} />
+              {resyncStatus ? 'Sinkronisasi...' : 'Sinkronisasi Hierarki'}
+            </button>
+            <button
               onClick={loadCoverage}
               disabled={coverageLoading}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#1B2A4A] border border-gray-300 rounded-lg px-3 py-1.5 hover:border-[#1B2A4A] transition-colors"
@@ -746,6 +798,62 @@ function UploadPage() {
             </button>
           </div>
         </div>
+
+        {resyncStatus && (
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-sm text-blue-800">
+              <RefreshCw size={14} className="animate-spin" />
+              <span className="font-medium">Sinkronisasi sedang berjalan</span>
+            </div>
+            <p className="text-xs text-blue-600 mt-1">{resyncStatus.detail}</p>
+          </div>
+        )}
+
+        {resyncResult && (
+          <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm text-green-800 font-medium">
+                  <CheckCircle size={14} />
+                  Sinkronisasi selesai ({resyncResult.duration_sec}s)
+                </div>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="bg-white rounded p-2 border border-green-100">
+                    <div className="text-gray-500">Area ter-resolusi</div>
+                    <div className="font-bold text-gray-800">{resyncResult.resolved?.area?.toLocaleString()}</div>
+                    {resyncResult.remaining_orphans?.area > 0 && (
+                      <div className="text-orange-500 text-[10px]">sisa orphan: {resyncResult.remaining_orphans.area.toLocaleString()}</div>
+                    )}
+                  </div>
+                  <div className="bg-white rounded p-2 border border-green-100">
+                    <div className="text-gray-500">Regional ter-resolusi</div>
+                    <div className="font-bold text-gray-800">{resyncResult.resolved?.regional?.toLocaleString()}</div>
+                    {resyncResult.remaining_orphans?.regional > 0 && (
+                      <div className="text-orange-500 text-[10px]">sisa orphan: {resyncResult.remaining_orphans.regional.toLocaleString()}</div>
+                    )}
+                  </div>
+                  <div className="bg-white rounded p-2 border border-green-100">
+                    <div className="text-gray-500">NOP ter-resolusi</div>
+                    <div className="font-bold text-gray-800">{resyncResult.resolved?.nop?.toLocaleString()}</div>
+                    {resyncResult.remaining_orphans?.nop > 0 && (
+                      <div className="text-orange-500 text-[10px]">sisa orphan: {resyncResult.remaining_orphans.nop.toLocaleString()}</div>
+                    )}
+                  </div>
+                  <div className="bg-white rounded p-2 border border-green-100">
+                    <div className="text-gray-500">TO ter-resolusi</div>
+                    <div className="font-bold text-gray-800">{resyncResult.resolved?.to?.toLocaleString()}</div>
+                    {resyncResult.remaining_orphans?.to > 0 && (
+                      <div className="text-orange-500 text-[10px]">sisa orphan: {resyncResult.remaining_orphans.to.toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setResyncResult(null)} className="text-gray-400 hover:text-gray-600 self-start">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
