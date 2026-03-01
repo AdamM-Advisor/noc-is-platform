@@ -1,6 +1,8 @@
+import json
 import logging
 import math
 import re
+import time
 from datetime import datetime
 from statistics import mean, stdev, median
 from backend.database import get_connection, get_write_connection
@@ -94,6 +96,25 @@ def _top_dist(conn, field, rc_cat, rc_1, rc_2, limit=3):
 
 def full_refresh():
     logger.info("NDC full refresh started")
+    start_time = time.time()
+
+    pre_count = 0
+    pre_enrichment = {}
+    try:
+        with get_connection() as conn:
+            pre_count = conn.execute("SELECT COUNT(*) FROM ndc_entries").fetchone()[0]
+            try:
+                snap_count = conn.execute("SELECT COUNT(*) FROM ndc_alarm_snapshot").fetchone()[0]
+                sym_count = conn.execute("SELECT COUNT(*) FROM ndc_symptoms").fetchone()[0]
+                diag_count = conn.execute("SELECT COUNT(*) FROM ndc_diagnostic_steps").fetchone()[0]
+                pre_enrichment = {"snapshots": snap_count, "symptoms": sym_count, "diagnostics": diag_count}
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    errors = []
+
     with get_connection() as conn:
         entries = _discover_entries(conn)
         logger.info(f"NDC discovery: {len(entries)} entries found")
@@ -110,36 +131,121 @@ def full_refresh():
         try:
             _generate_alarm_snapshot(code, rc_cat, rc_1, rc_2)
         except Exception as e:
+            errors.append(f"Alarm snapshot {code}: {e}")
             logger.warning(f"Alarm snapshot failed for {code}: {e}")
         try:
             _extract_symptoms(code, rc_cat, rc_1, rc_2)
         except Exception as e:
+            errors.append(f"Symptoms {code}: {e}")
             logger.warning(f"Symptoms failed for {code}: {e}")
         try:
             _generate_diagnostic_skeleton(code, rc_cat, rc_1, rc_2)
         except Exception as e:
+            errors.append(f"Diagnostic {code}: {e}")
             logger.warning(f"Diagnostic tree failed for {code}: {e}")
         try:
             _generate_resolution_paths(code, rc_cat, rc_1, rc_2)
         except Exception as e:
+            errors.append(f"Resolution {code}: {e}")
             logger.warning(f"Resolution paths failed for {code}: {e}")
         try:
             _generate_escalation_matrix(code, rc_cat, rc_1, rc_2)
         except Exception as e:
+            errors.append(f"Escalation {code}: {e}")
             logger.warning(f"Escalation matrix failed for {code}: {e}")
 
     try:
         _build_confusion_matrix()
     except Exception as e:
+        errors.append(f"Confusion matrix: {e}")
         logger.warning(f"Confusion matrix failed: {e}")
 
     try:
         _refresh_site_distributions()
     except Exception as e:
+        errors.append(f"Site distributions: {e}")
         logger.warning(f"Site distributions failed: {e}")
 
+    duration_sec = round(time.time() - start_time, 1)
+    post_count = len(all_entries)
+
+    post_enrichment = {}
+    try:
+        with get_connection() as conn:
+            snap_count = conn.execute("SELECT COUNT(*) FROM ndc_alarm_snapshot").fetchone()[0]
+            sym_count = conn.execute("SELECT COUNT(*) FROM ndc_symptoms").fetchone()[0]
+            diag_count = conn.execute("SELECT COUNT(*) FROM ndc_diagnostic_steps").fetchone()[0]
+            post_enrichment = {"snapshots": snap_count, "symptoms": sym_count, "diagnostics": diag_count}
+    except Exception:
+        pass
+
+    details = json.dumps({
+        "entries_before": pre_count,
+        "entries_after": post_count,
+        "enrichment_before": pre_enrichment,
+        "enrichment_after": post_enrichment,
+        "duration_sec": duration_sec,
+        "errors": errors[:20],
+    })
+
+    try:
+        _log_changelog("refresh", "system", details, post_count)
+    except Exception as e:
+        logger.warning(f"Failed to log changelog: {e}")
+
     logger.info("NDC full refresh completed")
-    return {"status": "success", "entries": len(all_entries)}
+    return {"status": "success", "entries": post_count}
+
+
+def _log_changelog(action, performed_by, details, entries_affected):
+    with get_write_connection() as wconn:
+        max_id = wconn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM ndc_changelog").fetchone()[0]
+        wconn.execute("""
+            INSERT INTO ndc_changelog (id, action, performed_by, timestamp, details, entries_affected)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+        """, [max_id, action, performed_by, details, entries_affected])
+
+
+def get_ndc_changelog(limit=50):
+    with get_connection() as conn:
+        try:
+            rows = conn.execute("""
+                SELECT id, action, performed_by, timestamp, details, entries_affected
+                FROM ndc_changelog
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, [limit]).fetchall()
+            return [{
+                "id": r[0],
+                "action": r[1],
+                "performed_by": r[2],
+                "timestamp": str(r[3]) if r[3] else None,
+                "details": json.loads(r[4]) if r[4] else None,
+                "entries_affected": r[5],
+            } for r in rows]
+        except Exception:
+            return []
+
+
+def get_last_refresh_info():
+    with get_connection() as conn:
+        try:
+            row = conn.execute("""
+                SELECT timestamp, details, entries_affected
+                FROM ndc_changelog
+                WHERE action = 'refresh'
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """).fetchone()
+            if row:
+                return {
+                    "timestamp": str(row[0]) if row[0] else None,
+                    "details": json.loads(row[1]) if row[1] else None,
+                    "entries_affected": row[2],
+                }
+        except Exception:
+            pass
+    return None
 
 
 def _discover_entries(conn):

@@ -646,6 +646,16 @@ TABLES_DDL = [
             PRIMARY KEY (site_id, ndc_code, period)
         )
     """),
+    ("ndc_changelog", """
+        CREATE TABLE IF NOT EXISTS ndc_changelog (
+            id INTEGER PRIMARY KEY,
+            action VARCHAR NOT NULL,
+            performed_by VARCHAR,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            details TEXT,
+            entries_affected INTEGER DEFAULT 0
+        )
+    """),
 ]
 
 INDEXES_DDL = [

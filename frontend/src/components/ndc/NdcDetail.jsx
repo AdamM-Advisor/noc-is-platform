@@ -35,7 +35,7 @@ function NdcDetail({ code, entry }) {
 
   if (loading) {
     return (
-      <div className="p-6 bg-gray-50 border-t border-gray-200">
+      <div className="p-6 bg-white border-l-4 border-l-[#1E40AF] shadow-lg m-4 rounded-lg">
         <div className="flex items-center gap-3 text-sm text-[#475569]">
           <div className="animate-spin w-4 h-4 border-2 border-[#1E40AF] border-t-transparent rounded-full" />
           Memuat detail...
@@ -46,19 +46,23 @@ function NdcDetail({ code, entry }) {
 
   if (!detail || detail.error) {
     return (
-      <div className="p-6 bg-gray-50 border-t border-gray-200 text-sm text-[#475569]">
+      <div className="p-6 bg-white border-l-4 border-l-[#1E40AF] shadow-lg m-4 rounded-lg text-sm text-[#475569]">
         Data belum tersedia. Jalankan Refresh NDC terlebih dahulu.
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-50 border-t border-gray-200">
-      <div className="px-6 pt-4 pb-2">
-        <div className="flex items-start justify-between mb-3">
+    <div className="bg-white border-l-4 border-l-[#1E40AF] shadow-lg m-4 rounded-lg overflow-hidden">
+      <div className="px-6 pt-5 pb-3 bg-gradient-to-r from-[#F8FAFC] to-white">
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">{detail.ndc_code} — {detail.title}</h3>
-            <p className="text-xs text-[#475569] mt-0.5">
+            <h3 className="text-base font-bold text-[#0F172A]">
+              <span className="text-[#1E40AF] font-mono mr-2">{detail.ndc_code}</span>
+              <span className="text-[#334155]">—</span>
+              <span className="ml-2">{detail.title}</span>
+            </h3>
+            <p className="text-sm text-[#64748B] mt-1">
               {detail.category_name} | {(detail.total_tickets || 0).toLocaleString()} tiket | {detail.first_seen} s/d {detail.last_seen}
             </p>
           </div>
@@ -75,16 +79,18 @@ function NdcDetail({ code, entry }) {
         </div>
       </div>
 
-      <div className="border-b border-gray-200 px-6">
+      <div className="h-[2px] bg-gradient-to-r from-[#1E40AF] via-[#3B82F6] to-[#93C5FD]" />
+
+      <div className="border-b border-gray-200 px-6 bg-[#F8FAFC]">
         <nav className="flex gap-0">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+              className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-[#1E40AF] text-[#1E40AF]'
-                  : 'border-transparent text-[#475569] hover:text-[#0F172A]'
+                  ? 'border-[#1E40AF] text-[#1E40AF] bg-white'
+                  : 'border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-white/50'
               }`}
             >
               {tab.label}
@@ -93,7 +99,7 @@ function NdcDetail({ code, entry }) {
         </nav>
       </div>
 
-      <div className="px-6 py-4">
+      <div className="px-6 py-5 bg-white">
         {activeTab === 'alarm' && <AlarmSnapshotTab data={detail.alarm_snapshot} coAlarms={detail.co_occurring_alarms} />}
         {activeTab === 'symptoms' && <SymptomsTab symptoms={detail.symptoms} code={code} />}
         {activeTab === 'diagnostic' && <DiagnosticTreeTab steps={detail.diagnostic_steps} code={code} />}
@@ -105,9 +111,9 @@ function NdcDetail({ code, entry }) {
 
 function MiniKpi({ label, value }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 px-3 py-2">
-      <div className="text-xs text-[#475569]">{label}</div>
-      <div className="text-sm font-semibold text-[#0F172A] mt-0.5">{value}</div>
+    <div className="bg-white rounded-lg border border-gray-200 px-3 py-2.5 border-t-2 border-t-[#3B82F6] shadow-sm">
+      <div className="text-xs font-medium text-[#64748B]">{label}</div>
+      <div className="text-base font-bold text-[#0F172A] mt-0.5">{value}</div>
     </div>
   );
 }

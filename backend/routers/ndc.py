@@ -4,6 +4,7 @@ from typing import Optional
 from backend.services.ndc_service import (
     full_refresh, get_ndc_list, get_ndc_detail, get_confusion_matrix,
     get_ndc_for_entity, get_ndc_for_site, update_ndc_curation,
+    get_ndc_changelog, get_last_refresh_info,
 )
 from backend.database import get_connection, get_write_connection
 
@@ -24,6 +25,17 @@ async def list_ndc(
     offset: int = Query(0),
 ):
     return get_ndc_list(category, priority, status, search, sort_by, sort_dir, limit, offset)
+
+
+@router.get("/changelog")
+async def changelog(limit: int = Query(50)):
+    return get_ndc_changelog(limit)
+
+
+@router.get("/last-refresh")
+async def last_refresh():
+    info = get_last_refresh_info()
+    return info or {"timestamp": None, "details": None, "entries_affected": 0}
 
 
 @router.get("/confusion-matrix")

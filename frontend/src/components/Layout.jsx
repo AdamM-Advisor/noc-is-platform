@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart, BookOpen, LogOut } from 'lucide-react';
+import useAuthStore from '../stores/authStore';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -16,6 +17,7 @@ const navItems = [
 
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const logout = useAuthStore((s) => s.logout);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -34,6 +36,13 @@ function Layout() {
           <NavLink to="/settings" className="p-1 hover:bg-white/10 rounded">
             <Settings size={18} />
           </NavLink>
+          <button
+            onClick={logout}
+            className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white transition-colors"
+            title="Logout"
+          >
+            <LogOut size={18} />
+          </button>
         </div>
       </header>
 

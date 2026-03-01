@@ -92,7 +92,7 @@ function NdcTable({ entries, loading, sort_by, sort_dir, onSort }) {
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr>
+                    <tr className="bg-[#F0F4FF]">
                       <td colSpan={COLUMNS.length + 1} className="p-0">
                         <NdcDetail code={entry.ndc_code} entry={entry} />
                       </td>

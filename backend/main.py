@@ -2,11 +2,13 @@ import os
 import time
 import logging
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from backend.database import init_database
+from backend.services.auth_service import validate_session
 from backend.routers import health, upload, admin
 from backend.routers import schema, threshold
 from backend.routers import imports, orphans, data
@@ -18,11 +20,25 @@ from backend.routers import dashboard, report_card
 from backend.routers import saved_views, comparison
 from backend.routers import reports
 from backend.routers import ndc
+from backend.routers import auth
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NOC-IS Analytics Platform", version="1.0.0")
+
+AUTH_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/verify-2fa", "/api/auth/me", "/api/auth/logout", "/api/health"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/") and path not in AUTH_EXEMPT_PATHS:
+            token = request.cookies.get("nocis_session")
+            if not token or not validate_session(token):
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,9 +47,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthMiddleware)
 
 app.state.start_time = time.time()
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
