@@ -7,7 +7,6 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 from backend.database import get_connection, get_write_connection
-from backend.services.chart_renderer import ChartRenderer
 from backend.services.excel_service import ExcelExporter
 from backend.services.dashboard_service import (
     LEVEL_COLS, CHILD_LEVEL_MAP, determine_entity_status,
@@ -32,7 +31,10 @@ TYPE_LABELS = {
     "annual": "TAHUNAN",
 }
 
-chart_renderer = ChartRenderer()
+def _get_chart_renderer():
+    from backend.services.chart_renderer import ChartRenderer
+    return ChartRenderer()
+
 excel_exporter = ExcelExporter()
 rec_engine = RecommendationEngine()
 
@@ -456,21 +458,21 @@ class ReportGenerator:
         charts = {}
         trend_data = data.get('trend_data', [])
         if trend_data:
-            charts['trend_chart_b64'] = chart_renderer.render_trend_line(
+            charts['trend_chart_b64'] = _get_chart_renderer().render_trend_line(
                 trend_data, 'Tren SLA (%)', target=90, ylabel='SLA %'
             )
         else:
-            charts['trend_chart_b64'] = chart_renderer._empty_chart('Tren SLA')
+            charts['trend_chart_b64'] = _get_chart_renderer()._empty_chart('Tren SLA')
 
         mttr_data = data.get('mttr_trend_data', [])
         if mttr_data:
-            charts['mttr_chart_b64'] = chart_renderer.render_trend_line(
+            charts['mttr_chart_b64'] = _get_chart_renderer().render_trend_line(
                 mttr_data, 'Tren MTTR (menit)', ylabel='Menit'
             )
 
         vol_data = data.get('vol_trend_data', [])
         if vol_data:
-            charts['vol_chart_b64'] = chart_renderer.render_bar_chart(
+            charts['vol_chart_b64'] = _get_chart_renderer().render_bar_chart(
                 [d['period'] for d in vol_data],
                 [d['value'] for d in vol_data],
                 'Volume Tiket per Periode'
@@ -479,7 +481,7 @@ class ReportGenerator:
         children = data.get('children', [])
         if children:
             top10 = children[:10]
-            charts['children_bar_b64'] = chart_renderer.render_bar_chart(
+            charts['children_bar_b64'] = _get_chart_renderer().render_bar_chart(
                 [(c.get('name') or c.get('id') or '')[:15] for c in top10],
                 [c.get('sla_pct', 0) for c in top10],
                 'SLA per Sub-Entitas (Bottom 10)',
@@ -502,7 +504,7 @@ class ReportGenerator:
             auto,
             max(0, 100 - repeat * 4),
         ]
-        charts['radar_b64'] = chart_renderer.render_radar(radar_labels, radar_values, 'Profil KPI')
+        charts['radar_b64'] = _get_chart_renderer().render_radar(radar_labels, radar_values, 'Profil KPI')
 
         return charts
 
