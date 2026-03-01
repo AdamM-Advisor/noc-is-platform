@@ -1,0 +1,14 @@
+frontend/node_modules
+frontend/src
+frontend/index.html
+frontend/package.json
+frontend/package-lock.json
+frontend/vite.config.js
+__pycache__
+*.pyc
+.git
+.local
+.cache
+.config
+*.log
+node_modules
