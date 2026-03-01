@@ -4,6 +4,35 @@ from backend.database import get_write_connection, get_connection
 
 logger = logging.getLogger(__name__)
 
+HOLIDAYS_2024 = [
+    ("2024-01-01", "Tahun Baru 2024 Masehi", False, False),
+    ("2024-02-08", "Isra Mi'raj Nabi Muhammad SAW", False, False),
+    ("2024-02-10", "Tahun Baru Imlek 2575", False, False),
+    ("2024-03-11", "Hari Suci Nyepi Tahun Baru Saka 1946", False, False),
+    ("2024-03-12", "Cuti Bersama Nyepi", True, False),
+    ("2024-03-28", "Wafat Isa Al-Masih (Jumat Agung)", False, False),
+    ("2024-03-29", "Cuti Bersama Wafat Isa Al-Masih", True, False),
+    ("2024-04-08", "Cuti Bersama Idul Fitri", True, True),
+    ("2024-04-09", "Cuti Bersama Idul Fitri", True, True),
+    ("2024-04-10", "Hari Raya Idul Fitri 1445 H", False, True),
+    ("2024-04-11", "Hari Raya Idul Fitri 1445 H", False, True),
+    ("2024-04-12", "Cuti Bersama Idul Fitri", True, True),
+    ("2024-04-15", "Cuti Bersama Idul Fitri", True, True),
+    ("2024-05-01", "Hari Buruh Internasional", False, False),
+    ("2024-05-09", "Kenaikan Isa Al-Masih", False, False),
+    ("2024-05-10", "Cuti Bersama Kenaikan Isa Al-Masih", True, False),
+    ("2024-05-23", "Hari Raya Waisak 2568 BE", False, False),
+    ("2024-05-24", "Cuti Bersama Waisak", True, False),
+    ("2024-06-01", "Hari Lahir Pancasila", False, False),
+    ("2024-06-17", "Hari Raya Idul Adha 1445 H", False, False),
+    ("2024-06-18", "Cuti Bersama Idul Adha", True, False),
+    ("2024-07-07", "Tahun Baru Islam 1446 H", False, False),
+    ("2024-08-17", "Hari Kemerdekaan RI", False, False),
+    ("2024-09-16", "Maulid Nabi Muhammad SAW", False, False),
+    ("2024-12-25", "Hari Raya Natal", False, False),
+    ("2024-12-26", "Cuti Bersama Natal", True, False),
+]
+
 HOLIDAYS_2025 = [
     ("2025-01-01", "Tahun Baru 2025 Masehi", False, False),
     ("2025-01-27", "Isra Mi'raj Nabi Muhammad SAW", False, False),
@@ -48,7 +77,14 @@ HOLIDAYS_2026 = [
     ("2026-12-25", "Hari Raya Natal", False, False),
 ]
 
+HOLIDAYS_MAP = {
+    2024: HOLIDAYS_2024,
+    2025: HOLIDAYS_2025,
+    2026: HOLIDAYS_2026,
+}
+
 RAMADAN_RANGES = {
+    2024: (date(2024, 3, 12), date(2024, 4, 9)),
     2025: (date(2025, 3, 1), date(2025, 3, 30)),
     2026: (date(2026, 2, 18), date(2026, 3, 19)),
 }
@@ -88,7 +124,7 @@ def _get_holiday_icon(name):
 def generate_calendar(year):
     start = date(year, 1, 1)
     end = date(year, 12, 31)
-    holidays = HOLIDAYS_2025 if year == 2025 else (HOLIDAYS_2026 if year == 2026 else [])
+    holidays = HOLIDAYS_MAP.get(year, [])
     holiday_map = {}
     for h_date, h_name, h_cuti, h_ramadan in holidays:
         holiday_map[h_date] = (h_name, h_cuti, h_ramadan)
@@ -196,11 +232,17 @@ def seed_calendar_if_empty():
         try:
             count = conn.execute("SELECT COUNT(*) FROM ext_calendar").fetchone()[0]
             if count > 0:
+                has_2024 = conn.execute("SELECT COUNT(*) FROM ext_calendar WHERE year = 2024").fetchone()[0]
+                if has_2024 == 0:
+                    logger.info("Adding calendar 2024...")
+                    generate_calendar(2024)
+                    logger.info("Calendar 2024 added")
                 return
         except Exception:
             return
 
-    logger.info("Seeding calendar for 2025-2026...")
+    logger.info("Seeding calendar for 2024-2026...")
+    generate_calendar(2024)
     generate_calendar(2025)
     generate_calendar(2026)
-    logger.info("Calendar seeded: 2025 + 2026")
+    logger.info("Calendar seeded: 2024 + 2025 + 2026")
