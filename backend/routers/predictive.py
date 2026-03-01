@@ -5,11 +5,13 @@ from typing import Optional
 from backend.database import get_connection, get_write_connection
 from backend.services.predictive_service import (
     calculate_risk_score,
+    batch_calculate_risk_scores,
     classify_risk,
     interpret_risk_aggregation,
     forecast_volume,
     predict_sla_breach,
     detect_pattern,
+    batch_detect_patterns,
     generate_maintenance_schedule,
     get_monthly_volume_data,
     get_monthly_sla_data,
@@ -56,26 +58,29 @@ def _get_entity_name(conn, level, entity_id):
         return entity_id
 
 
-def _batch_compute_risk_scores(conn, sites, date_to):
+def _batch_compute_risk_scores(conn, sites, date_to, entity_level=None, entity_id=None):
+    site_ids = [s["site_id"] for s in sites]
+    name_map = {s["site_id"]: s.get("site_name", s["site_id"]) for s in sites}
+
+    batch_results = batch_calculate_risk_scores(conn, site_ids, date_to, entity_level=entity_level, entity_id=entity_id)
+
     results = []
-    for site in sites:
-        site_id = site["site_id"]
-        site_name = site.get("site_name", site_id)
-        try:
-            risk = calculate_risk_score(conn, site_id, date_to)
+    for sid in site_ids:
+        risk = batch_results.get(sid)
+        if risk:
             results.append({
-                "site_id": site_id,
-                "site_name": site_name,
+                "site_id": sid,
+                "site_name": name_map[sid],
                 "risk_score": risk["risk_score"],
                 "status": risk["status"],
                 "top_component": risk["top_component"],
                 "top_component_label": risk.get("top_component_label", ""),
                 "components": risk["components"],
             })
-        except Exception:
+        else:
             results.append({
-                "site_id": site_id,
-                "site_name": site_name,
+                "site_id": sid,
+                "site_name": name_map[sid],
                 "risk_score": 0,
                 "status": classify_risk(0),
                 "top_component": "frequency",
@@ -86,33 +91,46 @@ def _batch_compute_risk_scores(conn, sites, date_to):
 
 
 def _store_risk_scores(results, date_to):
+    if not results:
+        return
     try:
         with get_write_connection() as wconn:
             now = datetime.now().isoformat()
+            seen = set()
+            unique_results = []
             for r in results:
-                try:
-                    wconn.execute(
-                        "DELETE FROM site_risk_scores WHERE site_id = ?",
-                        [r["site_id"]]
-                    )
-                    comps = r.get("components", {})
-                    wconn.execute("""
-                        INSERT INTO site_risk_scores (
-                            site_id, calculated_at, risk_score,
-                            frequency_score, recency_score, severity_score,
-                            mttr_trend_score, repeat_score, device_score, escalation_score,
-                            risk_level, top_component
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, [
-                        r["site_id"], now, r["risk_score"],
-                        comps.get("frequency", 0), comps.get("recency", 0),
-                        comps.get("severity", 0), comps.get("mttr_trend", 0),
-                        comps.get("repeat", 0), comps.get("device", 0),
-                        comps.get("escalation", 0),
-                        r["status"]["level"], r["top_component"],
-                    ])
-                except Exception as e:
-                    logger.warning(f"Failed to store risk score for {r['site_id']}: {e}")
+                if r["site_id"] not in seen:
+                    seen.add(r["site_id"])
+                    unique_results.append(r)
+            results = unique_results
+            site_ids = [r["site_id"].replace("'", "''") for r in results]
+            id_list = ",".join([f"'{sid}'" for sid in site_ids])
+            wconn.execute(f"DELETE FROM site_risk_scores WHERE site_id IN ({id_list})")
+
+            values = []
+            for r in results:
+                comps = r.get("components", {})
+                sid = r["site_id"].replace("'", "''")
+                level = r["status"]["level"].replace("'", "''")
+                tc = r["top_component"].replace("'", "''")
+                values.append(f"""('{sid}', '{now}', {r["risk_score"]},
+                    {comps.get("frequency", 0)}, {comps.get("recency", 0)},
+                    {comps.get("severity", 0)}, {comps.get("mttr_trend", 0)},
+                    {comps.get("repeat", 0)}, {comps.get("device", 0)},
+                    {comps.get("escalation", 0)},
+                    '{level}', '{tc}')""")
+
+            batch_size = 500
+            for i in range(0, len(values), batch_size):
+                chunk = values[i:i+batch_size]
+                wconn.execute(f"""
+                    INSERT INTO site_risk_scores (
+                        site_id, calculated_at, risk_score,
+                        frequency_score, recency_score, severity_score,
+                        mttr_trend_score, repeat_score, device_score, escalation_score,
+                        risk_level, top_component
+                    ) VALUES {','.join(chunk)}
+                """)
     except Exception as e:
         logger.warning(f"Failed to store risk scores: {e}")
 
@@ -164,7 +182,7 @@ async def get_risk_aggregation(
                 "chart_data": [],
             }
 
-        risk_results = _batch_compute_risk_scores(conn, sites, date_to)
+        risk_results = _batch_compute_risk_scores(conn, sites, date_to, entity_level=entity_level, entity_id=entity_id)
 
     _store_risk_scores(risk_results, date_to)
 
@@ -359,30 +377,43 @@ async def get_pattern_batch(
     with get_connection() as conn:
         entity_name = _get_entity_name(conn, entity_level, entity_id)
         sites = get_child_sites(conn, entity_level, entity_id)
+        limited_sites = sites[:limit]
+
+        site_ids = [s["site_id"] for s in limited_sites]
+        name_map = {s["site_id"]: s.get("site_name", s["site_id"]) for s in limited_sites}
+
+        batch_risks = batch_calculate_risk_scores(conn, site_ids, date_to, entity_level=entity_level, entity_id=entity_id)
+        batch_patterns = batch_detect_patterns(conn, site_ids, date_from, date_to)
+
+        safe_ids = [sid.replace("'", "''") for sid in site_ids]
+        id_list_sql = ",".join([f"'{sid}'" for sid in safe_ids])
+        ticket_counts = {}
+        try:
+            tc_rows = conn.execute(f"""
+                SELECT site_id, COUNT(*) FROM noc_tickets
+                WHERE site_id IN ({id_list_sql})
+                  AND occured_time >= ? AND occured_time <= ?
+                GROUP BY site_id
+            """, [date_from, date_to]).fetchall()
+            ticket_counts = {r[0]: r[1] for r in tc_rows}
+        except Exception:
+            pass
 
         scatter_data = []
-        for site in sites[:limit]:
+        for site in limited_sites:
             site_id = site["site_id"]
-            pat = detect_pattern(conn, site_id, date_from, date_to)
+            pat = batch_patterns.get(site_id, {"pattern_detected": False})
             if pat.get("avg_gap_days") is not None:
-                risk = calculate_risk_score(conn, site_id, date_to)
-                try:
-                    tc_row = conn.execute(
-                        "SELECT COUNT(*) FROM noc_tickets WHERE site_id = ? AND occured_time >= ? AND occured_time <= ?",
-                        [site_id, date_from, date_to]
-                    ).fetchone()
-                    ticket_count = tc_row[0] if tc_row else 0
-                except Exception:
-                    ticket_count = pat.get("n_intervals", 0) + 1
+                risk = batch_risks.get(site_id, {"risk_score": 0})
                 scatter_data.append({
                     "site_id": site_id,
-                    "site_name": site.get("site_name", site_id),
+                    "site_name": name_map[site_id],
                     "avg_gap_days": pat["avg_gap_days"],
                     "cv": pat.get("cv", 1),
                     "pattern_detected": pat.get("pattern_detected", False),
                     "pattern": "konsisten" if pat.get("pattern_detected") else "acak",
                     "risk_score": risk["risk_score"],
-                    "ticket_count": ticket_count,
+                    "ticket_count": ticket_counts.get(site_id, pat.get("n_intervals", 0) + 1),
                     "n_intervals": pat.get("n_intervals", 0),
                     "predicted_next": pat.get("predicted_next"),
                     "days_until_next": pat.get("days_until_next"),
@@ -452,11 +483,16 @@ async def get_maintenance_calendar(
 
         items = []
         date_from_pattern = (datetime.now().replace(day=1) - timedelta(days=365)).strftime("%Y-%m-%d")
+        limited_sites = sites[:100]
 
-        for site in sites[:100]:
+        site_ids = [s["site_id"] for s in limited_sites]
+        batch_risks = batch_calculate_risk_scores(conn, site_ids, date_to, entity_level=entity_level, entity_id=entity_id)
+        batch_patterns = batch_detect_patterns(conn, site_ids, date_from_pattern, date_to)
+
+        for site in limited_sites:
             site_id = site["site_id"]
-            risk = calculate_risk_score(conn, site_id, date_to)
-            pat = detect_pattern(conn, site_id, date_from_pattern, date_to)
+            risk = batch_risks.get(site_id, {"risk_score": 0})
+            pat = batch_patterns.get(site_id, {"pattern_detected": False})
 
             items.append({
                 "site_id": site_id,

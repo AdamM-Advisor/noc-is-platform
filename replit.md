@@ -58,7 +58,7 @@ The platform follows a client-server architecture with a Python/FastAPI backend 
 - **Analytics & Profiling**:
     - **Profiler Engine**: Generates entity profiles including KPIs, behavior labels (6 types), narrative, and recommendations. Supports temporal analysis (trend, heatmap, child decomposition), peer ranking, and cross-dimensional `gangguan` (disruption) analysis.
     - **Predictive Analytics**:
-        - **Risk Score**: Calculates site-level risk based on 7 weighted components. Aggregates risk at higher hierarchical levels.
+        - **Risk Score**: Calculates site-level risk based on 7 weighted components. Aggregates risk at higher hierarchical levels. Batch computation uses `summary_monthly` table (not raw `noc_tickets`) for O(1)-query-count performance — processes 19K sites in ~1 second. Risk score caching in `site_risk_scores` uses batch INSERT (500/batch) for fast persistence.
         - **Forecast**: Uses WMA with trend and seasonal components to predict volume.
         - **SLA Breach Prediction**: Projects SLA performance and identifies potential breach weeks for entities.
         - **Pattern Detection**: Identifies recurring patterns in ticket data.

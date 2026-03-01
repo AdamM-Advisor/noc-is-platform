@@ -247,6 +247,143 @@ def calculate_risk_score(conn, site_id, date_to):
     }
 
 
+def batch_calculate_risk_scores(conn, site_ids, date_to, entity_level=None, entity_id=None):
+    if not site_ids:
+        return {}
+
+    try:
+        date_to_dt = datetime.strptime(date_to, "%Y-%m-%d") if isinstance(date_to, str) else date_to
+    except Exception:
+        date_to_dt = datetime.now()
+
+    date_to_ym = date_to_dt.strftime("%Y-%m")
+    date_from_90d_ym = (date_to_dt - timedelta(days=90)).strftime("%Y-%m")
+
+    safe_ids = [sid.replace("'", "''") for sid in set(site_ids)]
+    id_list_sql = ",".join([f"'{sid}'" for sid in safe_ids])
+    where = f"site_id IN ({id_list_sql}) AND site_id IS NOT NULL AND severity IS NULL AND type_ticket IS NULL"
+
+    try:
+        rows = conn.execute(f"""
+            SELECT site_id,
+                   SUM(total_tickets) as tickets,
+                   SUM(count_critical + count_major) as cm_total,
+                   SUM(total_escalated) as esc_total,
+                   SUM(total_repeat) as rep_total,
+                   MAX(year_month) as last_month
+            FROM summary_monthly
+            WHERE {where}
+              AND year_month >= '{date_from_90d_ym}' AND year_month <= '{date_to_ym}'
+            GROUP BY site_id
+        """).fetchall()
+    except Exception as e:
+        logger.warning(f"Batch summary query failed: {e}")
+        rows = []
+
+    freq_map = {}
+    severity_map = {}
+    esc_map = {}
+    repeat_map = {}
+    recency_map = {}
+
+    for r in rows:
+        sid = r[0]
+        tickets = r[1] or 0
+        freq_map[sid] = tickets
+        severity_map[sid] = ((r[2] or 0) / tickets * 100) if tickets > 0 else 0
+        esc_map[sid] = ((r[3] or 0) / tickets * 100) if tickets > 0 else 0
+        repeat_map[sid] = ((r[4] or 0) / tickets * 100) if tickets > 0 else 0
+        if r[5]:
+            try:
+                last_ym = datetime.strptime(r[5], "%Y-%m")
+                last_ym_end = (last_ym.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+                recency_map[sid] = max(0, (date_to_dt - last_ym_end).days)
+            except Exception:
+                pass
+
+    mttr_map = {}
+    try:
+        mrows = conn.execute(f"""
+            SELECT site_id, year_month, avg_mttr_min
+            FROM summary_monthly
+            WHERE {where}
+              AND year_month >= '{date_from_90d_ym}' AND year_month <= '{date_to_ym}'
+              AND avg_mttr_min IS NOT NULL AND avg_mttr_min > 0
+            ORDER BY site_id, year_month
+        """).fetchall()
+        current_site = None
+        mttr_values = []
+        for r in mrows:
+            if r[0] != current_site:
+                if current_site and len(mttr_values) >= 2:
+                    mttr_map[current_site] = linear_regression_slope(range(len(mttr_values)), mttr_values)
+                current_site = r[0]
+                mttr_values = []
+            if r[2] is not None:
+                mttr_values.append(r[2])
+        if current_site and len(mttr_values) >= 2:
+            mttr_map[current_site] = linear_regression_slope(range(len(mttr_values)), mttr_values)
+    except Exception as e:
+        logger.warning(f"Batch MTTR query failed: {e}")
+
+    device_map = {}
+    try:
+        drows = conn.execute(f"""
+            SELECT site_id, equipment_age_years
+            FROM master_site
+            WHERE site_id IN (SELECT DISTINCT site_id FROM summary_monthly WHERE {where} AND year_month >= '{date_from_90d_ym}')
+        """).fetchall()
+        for r in drows:
+            device_map[r[0]] = float(r[1]) if r[1] else 0
+    except Exception as e:
+        logger.warning(f"Batch device query failed: {e}")
+
+    results = {}
+    all_site_ids = set(site_ids) | set(freq_map.keys())
+    for sid in all_site_ids:
+        ticket_count = freq_map.get(sid, 0)
+        days_since_last = recency_map.get(sid, 999)
+        crit_major_pct = severity_map.get(sid, 0)
+        mttr_slope = mttr_map.get(sid, 0)
+        rep_pct = repeat_map.get(sid, 0)
+        dev_age = device_map.get(sid, 0)
+        escalation_pct = esc_map.get(sid, 0)
+
+        frequency_score = min(ticket_count / 50 * 100, 100)
+        recency_score = max(0, (90 - days_since_last) / 90 * 100)
+        severity_score = min(crit_major_pct / 50 * 100, 100)
+        mttr_trend_score = min(max(mttr_slope, 0) / 100 * 100, 100)
+        repeat_score = min(rep_pct / 40 * 100, 100)
+        device_score = min(dev_age / 7 * 100, 100)
+        escalation_score = min(escalation_pct / 20 * 100, 100)
+
+        components = {
+            "frequency": round(frequency_score, 1),
+            "recency": round(recency_score, 1),
+            "severity": round(severity_score, 1),
+            "mttr_trend": round(mttr_trend_score, 1),
+            "repeat": round(repeat_score, 1),
+            "device": round(device_score, 1),
+            "escalation": round(escalation_score, 1),
+        }
+
+        total_score = sum(components[k] * WEIGHTS[k] for k in WEIGHTS)
+        total_score = round(total_score, 1)
+
+        status = classify_risk(total_score)
+        top_component = max(components, key=components.get)
+
+        results[sid] = {
+            "risk_score": total_score,
+            "components": components,
+            "status": status,
+            "top_component": top_component,
+            "top_component_label": COMP_LABELS[top_component],
+        }
+
+    return results
+
+
 def interpret_risk_aggregation(n_high, n_medium, n_low, total, worst):
     pct_high = n_high / total * 100 if total > 0 else 0
 
@@ -480,6 +617,94 @@ def detect_pattern(conn, site_id, date_from, date_to):
                 f"Prediksi kurang reliable."
             ),
         }
+
+
+def batch_detect_patterns(conn, site_ids, date_from, date_to):
+    if not site_ids:
+        return {}
+
+    safe_ids = [sid.replace("'", "''") for sid in site_ids]
+    id_list = ",".join([f"'{sid}'" for sid in safe_ids])
+
+    try:
+        rows = conn.execute(f"""
+            SELECT site_id, occured_time FROM noc_tickets
+            WHERE site_id IN ({id_list})
+              AND occured_time >= ? AND occured_time <= ?
+            ORDER BY site_id, occured_time
+        """, [date_from, date_to]).fetchall()
+    except Exception as e:
+        logger.warning(f"batch_detect_patterns query failed: {e}")
+        return {}
+
+    from collections import defaultdict
+    site_timestamps = defaultdict(list)
+    for r in rows:
+        if r[0] and r[1]:
+            try:
+                t = r[1] if isinstance(r[1], datetime) else datetime.strptime(str(r[1])[:19], "%Y-%m-%d %H:%M:%S")
+                site_timestamps[r[0]].append(t)
+            except Exception:
+                pass
+
+    results = {}
+    for sid in site_ids:
+        timestamps = site_timestamps.get(sid, [])
+        if len(timestamps) < 3:
+            results[sid] = {"pattern_detected": False, "reason": "Kurang dari 3 tiket"}
+            continue
+
+        intervals = []
+        for i in range(1, len(timestamps)):
+            gap_days = (timestamps[i] - timestamps[i-1]).total_seconds() / 86400
+            if gap_days > 0.5:
+                intervals.append(gap_days)
+
+        if len(intervals) < 2:
+            results[sid] = {"pattern_detected": False, "reason": "Interval terlalu sedikit"}
+            continue
+
+        avg_gap = mean(intervals)
+        std_gap = stdev(intervals) if len(intervals) > 1 else 0
+        cv = std_gap / avg_gap if avg_gap > 0 else 999
+
+        if cv < 0.5:
+            last_ticket_date = timestamps[-1]
+            predicted_next = last_ticket_date + timedelta(days=avg_gap)
+            days_until_next = max(0, (predicted_next - datetime.now()).days)
+            buffer_days = max(3, int(avg_gap * 0.3))
+            results[sid] = {
+                "pattern_detected": True,
+                "avg_gap_days": round(avg_gap, 1),
+                "cv": round(cv, 3),
+                "consistency_pct": round((1 - cv) * 100, 0),
+                "n_intervals": len(intervals),
+                "predicted_next": predicted_next.isoformat(),
+                "days_until_next": days_until_next,
+                "narrative": (
+                    f"Pola terdeteksi: gangguan terjadi setiap ~{avg_gap:.0f} hari "
+                    f"(konsistensi {(1-cv)*100:.0f}%). "
+                    f"Prediksi insiden berikutnya: ~{predicted_next.strftime('%d %b %Y')}."
+                ),
+                "maintenance_window": {
+                    "start": (predicted_next - timedelta(days=buffer_days)).isoformat(),
+                    "end": predicted_next.isoformat(),
+                    "narrative": f"Maintenance direkomendasikan {buffer_days} hari sebelum prediksi insiden.",
+                },
+            }
+        else:
+            results[sid] = {
+                "pattern_detected": False,
+                "avg_gap_days": round(avg_gap, 1),
+                "cv": round(cv, 3),
+                "narrative": (
+                    f"Pola TIDAK konsisten — interval bervariasi "
+                    f"(rata-rata {avg_gap:.0f} hari, CV: {cv:.2f}). "
+                    f"Prediksi kurang reliable."
+                ),
+            }
+
+    return results
 
 
 def generate_maintenance_schedule(items):
