@@ -174,8 +174,8 @@ def _discover_entries(conn):
             cat_info = CATEGORY_MAP.get(r[1], DEFAULT_CATEGORY)
             code_num = int(r[0].split('-')[-1])
             cat_counters[cat_info['code']] = max(cat_counters.get(cat_info['code'], 0), code_num)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Loading existing NDC codes: {e}")
 
     entries = []
     for r in rows:
@@ -225,8 +225,8 @@ def _discover_entries(conn):
                 fs = first_seen if isinstance(first_seen, datetime) else datetime.fromisoformat(str(first_seen)[:19])
                 ls = last_seen if isinstance(last_seen, datetime) else datetime.fromisoformat(str(last_seen)[:19])
                 data_months = max(1, (ls.year - fs.year) * 12 + (ls.month - fs.month) + 1)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Date range calc error: {e}")
 
         entries.append({
             'ndc_code': ndc_code,
@@ -382,8 +382,8 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                         best_pct = pct
                         best_start = h
                 peak_hours_range = f"{best_start:02d}:00 — {(best_start+5)%24:02d}:00 ({best_pct:.0f}% tiket)"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Peak hours calc failed for {ndc_code}: {e}")
 
         try:
             day_names = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
@@ -406,8 +406,8 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                     pct = round(r[1] * 100.0 / total_d, 1) if total_d > 0 else 0
                     parts.append(f"{day_names.get(r[0], str(r[0]))} ({pct}%)")
                 peak_days = ", ".join(parts)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Peak days calc failed for {ndc_code}: {e}")
 
         try:
             month_names = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'Mei',6:'Jun',7:'Jul',8:'Agu',9:'Sep',10:'Okt',11:'Nov',12:'Des'}
@@ -424,8 +424,8 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                 high_months = [month_names.get(r[0], str(r[0])) for r in monthly if r[1] > avg_monthly * 1.2]
                 if high_months:
                     seasonal_pattern = ", ".join(high_months)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Seasonal pattern calc failed for {ndc_code}: {e}")
 
         site_class_dist = None
         pct_3t = 0
@@ -445,8 +445,8 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                 total_sc = sum(r[1] for r in sc_rows)
                 parts = [f"{r[0]} ({round(r[1]*100.0/total_sc,1)}%)" for r in sc_rows]
                 site_class_dist = ", ".join(parts)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Site class dist failed for {ndc_code}: {e}")
 
         try:
             flag_rows = conn.execute(f"""
@@ -458,8 +458,8 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             """, params).fetchone()
             if flag_rows and flag_rows[0]:
                 pct_3t = flag_rows[0]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"3T pct calc failed for {ndc_code}: {e}")
 
         try:
             reg_rows = conn.execute(f"""
@@ -479,8 +479,8 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                 total_reg = sum(r[1] for r in reg_rows)
                 parts = [f"{r[0]} ({round(r[1]*100.0/total_reg,1)}%)" for r in reg_rows]
                 top_regions = ", ".join(parts)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Top regions calc failed for {ndc_code}: {e}")
 
         sample_size = conn.execute(f"""
             SELECT COUNT(*) FROM noc_tickets
@@ -560,7 +560,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                     ndc_code, cr[0], cr[1], cr[0], cr[2], lag_desc, cr[3], cr[4], cr[5]
                 ])
         except Exception as e:
-            logger.warning(f"Co-occurring alarms failed for {ndc_code}: {e}")
+            logger.warning(f"Co-occurring alarms failed for {ndc_code}: {e}", exc_info=True)
 
 
 def _extract_symptoms(ndc_code, rc_cat, rc_1, rc_2):
@@ -780,7 +780,8 @@ def _generate_resolution_paths(ndc_code, rc_cat, rc_1, rc_2):
                     LIMIT 3
                 """, params + [med, cluster]).fetchall()
                 res_actions[cluster] = [r[0] for r in action_rows if r[0]]
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Resolution actions query failed for {ndc_code} cluster {cluster}: {e}")
                 res_actions[cluster] = []
 
     with get_write_connection() as wconn:
@@ -909,8 +910,8 @@ def _build_confusion_matrix():
                 if misclass:
                     wconn.execute("UPDATE ndc_entries SET common_inap_misclass = ? WHERE ndc_code = ?",
                                   [misclass[0], row[0]])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Misclass update failed for {row[0]}: {e}")
 
 
 def _refresh_site_distributions():

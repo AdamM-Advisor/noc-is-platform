@@ -37,7 +37,8 @@ The platform employs a client-server architecture, featuring a Python/FastAPI ba
 - **Analytics & Profiling**:
     - **Profiler Engine**: Generates entity profiles, including KPIs, behavior labels, narratives, and recommendations, supporting temporal analysis, peer ranking, and cross-dimensional disruption analysis.
     - **Predictive Analytics**: Includes risk scoring (site-level based on 7 components, aggregated hierarchically), volume forecasting (WMA), SLA breach prediction, pattern detection, and maintenance calendar scheduling.
-- **NDC Knowledge Base**: Auto-generates Network Diagnostic Codes (NDCs) based on unique ticket patterns, providing 4 enrichment tabs per entry: Alarm Snapshot, Symptoms, Diagnostic Tree, and SOP. Features include confusion matrix, site distribution (with cascading Regional → NOP → TO → Site dropdowns), and a curation workflow.
+- **NDC Knowledge Base**: Auto-generates Network Diagnostic Codes (NDCs) based on unique ticket patterns, providing 4 enrichment tabs per entry: Alarm Snapshot, Symptoms, Diagnostic Tree, and SOP. Features include confusion matrix, site distribution (with cascading Regional → NOP → TO → Site dropdowns), and a curation workflow. Enrichment functions log errors at debug level instead of silently swallowing exceptions. All enrichment tables (ndc_alarm_snapshot, ndc_symptoms, ndc_diagnostic_steps, ndc_resolution_paths, ndc_co_occurring_alarms, ndc_escalation_matrix) are populated during full refresh.
+- **Hierarchy Resync**: Uses DROP TABLE + RENAME approach instead of RENAME-swap to avoid DuckDB dependency errors when views reference the swapped table.
 - **External Data**: Manages and integrates data from BMKG (weather), PLN (power outages), and a calendar (holidays), supporting custom annotations and correlation analysis.
 - **System Administration**: Offers database backup/restore, schema initialization, seeding reset, and data deletion functionalities.
 

@@ -103,9 +103,8 @@ def resync_hierarchy(progress_callback=None):
         update("swapping", "Mengganti tabel tiket...", 0, total_tickets)
         conn.execute("BEGIN TRANSACTION")
         try:
-            conn.execute("ALTER TABLE noc_tickets RENAME TO _noc_tickets_backup")
+            conn.execute("DROP TABLE IF EXISTS noc_tickets")
             conn.execute("ALTER TABLE _noc_tickets_resolved RENAME TO noc_tickets")
-            conn.execute("DROP TABLE IF EXISTS _noc_tickets_backup")
             conn.execute("COMMIT")
         except Exception:
             conn.execute("ROLLBACK")
