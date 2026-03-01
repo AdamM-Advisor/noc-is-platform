@@ -324,6 +324,15 @@ async def delete_by_period_range(body: dict):
 
 @router.post("/resync")
 async def start_resync():
+    from backend.routers.upload import _processing_jobs, _processing_lock
+    with _processing_lock:
+        active_uploads = [j for j in _processing_jobs.values() if j.get("status") == "processing"]
+    if active_uploads:
+        raise HTTPException(
+            status_code=409,
+            detail="Upload sedang berjalan. Tunggu upload selesai sebelum sinkronisasi.",
+        )
+
     with _resync_lock:
         active = [j for j in _resync_jobs.values() if j["status"] == "processing"]
         if active:
