@@ -33,11 +33,11 @@ The platform employs a client-server architecture, featuring a Python/FastAPI ba
     - **Site Master**: Auto-populates hierarchy and enriches sites using bulk DuckDB operations for efficiency.
     - **Tickets**: Calculates 17 derived columns, resolves hierarchy, and handles duplicate detection.
     - **Summarization**: Refreshes monthly and weekly summary tables.
-- **Data Management**: Provides CRUD operations for master data entities, server-side pagination, export, import history, granular data deletion, and orphan record management. A "Sinkronisasi Hierarki" feature re-resolves ticket hierarchies against master data using atomic table swaps in DuckDB.
+- **Data Management**: Provides CRUD operations for master data entities, server-side pagination, export, import history, granular data deletion, and orphan record management. A "Sinkronisasi Hierarki" feature re-resolves ticket hierarchies against master data using atomic table swaps in DuckDB, with post-resync orphan delta display showing before/after changes.
 - **Analytics & Profiling**:
     - **Profiler Engine**: Generates entity profiles, including KPIs, behavior labels, narratives, and recommendations, supporting temporal analysis, peer ranking, and cross-dimensional disruption analysis.
     - **Predictive Analytics**: Includes risk scoring (site-level based on 7 components, aggregated hierarchically), volume forecasting (WMA), SLA breach prediction, pattern detection, and maintenance calendar scheduling.
-- **NDC Knowledge Base**: Auto-generates Network Diagnostic Codes (NDCs) based on unique ticket patterns, providing 4 enrichment tabs per entry: Alarm Snapshot, Symptoms, Diagnostic Tree, and SOP. Features include confusion matrix, site distribution, and a curation workflow.
+- **NDC Knowledge Base**: Auto-generates Network Diagnostic Codes (NDCs) based on unique ticket patterns, providing 4 enrichment tabs per entry: Alarm Snapshot, Symptoms, Diagnostic Tree, and SOP. Features include confusion matrix, site distribution (with cascading Regional → NOP → TO → Site dropdowns), and a curation workflow.
 - **External Data**: Manages and integrates data from BMKG (weather), PLN (power outages), and a calendar (holidays), supporting custom annotations and correlation analysis.
 - **System Administration**: Offers database backup/restore, schema initialization, seeding reset, and data deletion functionalities.
 

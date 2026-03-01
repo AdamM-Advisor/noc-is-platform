@@ -71,7 +71,9 @@ function UploadPage() {
 
   const [resyncStatus, setResyncStatus] = useState(null);
   const [resyncResult, setResyncResult] = useState(null);
+  const [resyncOrphanDelta, setResyncOrphanDelta] = useState(null);
   const resyncPollRef = useRef(null);
+  const preResyncOrphansRef = useRef(null);
 
   useEffect(() => {
     loadImportHistory();
@@ -129,6 +131,11 @@ function UploadPage() {
   const startResync = async () => {
     try {
       setResyncResult(null);
+      setResyncOrphanDelta(null);
+      const orphansBefore = {};
+      importHistory.forEach(item => { orphansBefore[item.id] = item.orphan_count || 0; });
+      preResyncOrphansRef.current = orphansBefore;
+
       setResyncStatus({ phase: 'starting', detail: 'Memulai sinkronisasi...' });
       const res = await client.post('/data/resync');
       const jobId = res.data.job_id;
@@ -145,7 +152,28 @@ function UploadPage() {
             setResyncResult(job.result);
             setResyncStatus(null);
             loadCoverage();
-            loadImportHistory();
+            try {
+              const histRes = await client.get('/imports');
+              setImportHistory(histRes.data);
+              const before = preResyncOrphansRef.current || {};
+              const deltas = {};
+              let totalResolved = 0;
+              let totalRemaining = 0;
+              let changedCount = 0;
+              histRes.data.forEach(item => {
+                const prev = before[item.id];
+                const curr = item.orphan_count || 0;
+                totalRemaining += curr;
+                if (prev !== undefined && prev !== curr) {
+                  deltas[item.id] = prev - curr;
+                  totalResolved += Math.max(0, prev - curr);
+                  changedCount++;
+                }
+              });
+              setResyncOrphanDelta({ deltas, totalResolved, totalRemaining, changedCount });
+            } catch (_) {
+              loadImportHistory();
+            }
           } else if (job.status === 'failed') {
             clearInterval(resyncPollRef.current);
             resyncPollRef.current = null;
@@ -723,7 +751,7 @@ function UploadPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {importHistory.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
+                    <tr key={item.id} className={`hover:bg-gray-50${resyncOrphanDelta?.deltas?.[item.id] > 0 ? ' bg-green-50/50' : ''}`}>
                       <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
                         {item.imported_at ? new Date(item.imported_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'}
                       </td>
@@ -732,11 +760,19 @@ function UploadPage() {
                       <td className="px-3 py-2 text-gray-600">{item.period || '-'}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{item.rows_imported?.toLocaleString()}</td>
                       <td className="px-3 py-2 text-right">
-                        {item.orphan_count > 0 ? (
-                          <span className="text-yellow-600 font-medium">{item.orphan_count}</span>
-                        ) : (
-                          <span className="text-gray-400">0</span>
-                        )}
+                        <span className="inline-flex items-center gap-1">
+                          {item.orphan_count > 0 ? (
+                            <span className="text-yellow-600 font-medium">{item.orphan_count?.toLocaleString()}</span>
+                          ) : (
+                            <span className="text-gray-400">0</span>
+                          )}
+                          {resyncOrphanDelta?.deltas?.[item.id] > 0 && (
+                            <span className="text-green-600 text-xs font-medium">-{resyncOrphanDelta.deltas[item.id].toLocaleString()}</span>
+                          )}
+                          {resyncOrphanDelta && preResyncOrphansRef.current?.[item.id] !== undefined && resyncOrphanDelta.deltas?.[item.id] === undefined && item.orphan_count > 0 && (
+                            <span className="text-gray-400 text-[10px]" title="Orphan karena entitas tidak ada di master data">tetap</span>
+                          )}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-center">
                         {item.status === 'completed' ? (
@@ -812,11 +848,20 @@ function UploadPage() {
         {resyncResult && (
           <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <div className="flex items-center gap-2 text-sm text-green-800 font-medium">
                   <CheckCircle size={14} />
                   Sinkronisasi selesai ({resyncResult.duration_sec}s)
                 </div>
+                {resyncOrphanDelta && (
+                  <div className="mt-1.5 text-xs text-gray-600">
+                    {resyncOrphanDelta.changedCount > 0 ? (
+                      <span>{resyncOrphanDelta.changedCount} import diperbarui — <span className="text-green-700 font-medium">{resyncOrphanDelta.totalResolved.toLocaleString()} orphan teresolusi</span>, <span className="text-gray-500">{resyncOrphanDelta.totalRemaining.toLocaleString()} masih tersisa</span></span>
+                    ) : (
+                      <span className="text-gray-500">Tidak ada perubahan orphan — semua orphan yang tersisa adalah tiket yang mereferensikan entitas di luar master data saat ini</span>
+                    )}
+                  </div>
+                )}
                 <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div className="bg-white rounded p-2 border border-green-100">
                     <div className="text-gray-500">Area ter-resolusi</div>
@@ -848,7 +893,7 @@ function UploadPage() {
                   </div>
                 </div>
               </div>
-              <button onClick={() => setResyncResult(null)} className="text-gray-400 hover:text-gray-600 self-start">
+              <button onClick={() => { setResyncResult(null); setResyncOrphanDelta(null); }} className="text-gray-400 hover:text-gray-600 self-start">
                 <X size={14} />
               </button>
             </div>

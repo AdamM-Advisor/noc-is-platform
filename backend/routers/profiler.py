@@ -756,6 +756,21 @@ async def get_filter_options():
     }
 
 
+@router.get("/sites")
+async def get_sites(to_id: str = None):
+    with get_connection() as conn:
+        if to_id:
+            rows = conn.execute(
+                "SELECT site_id, site_name, to_id FROM master_site WHERE to_id = ? AND status = 'ACTIVE' ORDER BY site_name",
+                [to_id]
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT site_id, site_name, to_id FROM master_site WHERE status = 'ACTIVE' ORDER BY site_name LIMIT 500"
+            ).fetchall()
+    return [{"id": r[0], "name": r[1] or r[0], "to_id": r[2]} for r in rows]
+
+
 POSITIVE_UP_KPIS = {"sla_pct", "auto_resolve_pct"}
 TREND_THRESHOLDS = {
     "sla_pct": 0.5,

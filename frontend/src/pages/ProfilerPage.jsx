@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, RefreshCw, RotateCcw, ChevronRight, TrendingUp, TrendingDown, ArrowUpDown, Bookmark, GitCompare, FileText } from 'lucide-react';
 import useProfilerStore from '../stores/profilerStore';
@@ -367,6 +367,26 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
   const [cascadeRegional, setCascadeRegional] = useState('');
   const [cascadeNop, setCascadeNop] = useState('');
   const [cascadeTo, setCascadeTo] = useState('');
+  const [siteOptions, setSiteOptions] = useState([]);
+  const [sitesLoading, setSitesLoading] = useState(false);
+  const siteAbortRef = useRef(null);
+
+  const fetchSites = useCallback(async (toId) => {
+    if (siteAbortRef.current) siteAbortRef.current.abort();
+    if (!toId) { setSiteOptions([]); return; }
+    const controller = new AbortController();
+    siteAbortRef.current = controller;
+    setSitesLoading(true);
+    try {
+      const res = await fetch(`/api/profiler/sites?to_id=${encodeURIComponent(toId)}`, { signal: controller.signal });
+      const data = await res.json();
+      setSiteOptions(data);
+    } catch (e) {
+      if (e.name !== 'AbortError') setSiteOptions([]);
+    } finally {
+      setSitesLoading(false);
+    }
+  }, []);
 
   const handleLevelChange = (level) => {
     setFilters({ entityLevel: level, entityId: '' });
@@ -374,6 +394,7 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
     setCascadeRegional('');
     setCascadeNop('');
     setCascadeTo('');
+    setSiteOptions([]);
   };
 
   const levelIdx = LEVEL_OPTIONS.findIndex(l => l.value === filters.entityLevel);
@@ -405,6 +426,7 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
     setCascadeRegional('');
     setCascadeNop('');
     setCascadeTo('');
+    setSiteOptions([]);
     if (filters.entityLevel === 'area') setFilters({ entityId: val });
     else setFilters({ entityId: '' });
   };
@@ -413,6 +435,7 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
     setCascadeRegional(val);
     setCascadeNop('');
     setCascadeTo('');
+    setSiteOptions([]);
     if (filters.entityLevel === 'regional') setFilters({ entityId: val });
     else setFilters({ entityId: '' });
   };
@@ -420,6 +443,7 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
   const handleCascadeNop = (val) => {
     setCascadeNop(val);
     setCascadeTo('');
+    setSiteOptions([]);
     if (filters.entityLevel === 'nop') setFilters({ entityId: val });
     else setFilters({ entityId: '' });
   };
@@ -427,8 +451,20 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
   const handleCascadeTo = (val) => {
     setCascadeTo(val);
     if (filters.entityLevel === 'to') setFilters({ entityId: val });
-    else setFilters({ entityId: '' });
+    else {
+      setFilters({ entityId: '' });
+      if (filters.entityLevel === 'site') {
+        if (val) fetchSites(val);
+        else setSiteOptions([]);
+      }
+    }
   };
+
+  useEffect(() => {
+    if (filters.entityLevel === 'site' && cascadeTo) {
+      fetchSites(cascadeTo);
+    }
+  }, [filters.entityLevel]);
 
   return (
     <div className="bg-white rounded-lg border shadow-sm p-5 sticky top-0 z-10 space-y-4">
@@ -516,22 +552,25 @@ function SelectorPanel({ filters, setFilters, options, onGenerate, onReset, load
 
           {filters.entityLevel === 'site' && (
             <>
-              {showArea && (
-                <>
-                  <select className="border rounded-lg px-3 py-2 text-sm min-w-[130px]" value={cascadeArea} onChange={(e) => handleCascadeArea(e.target.value)}>
-                    <option value="">Area</option>
-                    {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <span className="text-gray-300">→</span>
-                </>
-              )}
-              <input
-                type="text"
-                className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px]"
-                placeholder="Ketik Site ID..."
-                value={filters.entityId}
-                onChange={(e) => setFilters({ entityId: e.target.value })}
-              />
+              <select className="border rounded-lg px-3 py-2 text-sm min-w-[130px]" value={cascadeRegional} onChange={(e) => handleCascadeRegional(e.target.value)}>
+                <option value="">-- Regional --</option>
+                {(options?.regionals || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              <span className="text-gray-300">→</span>
+              <select className="border rounded-lg px-3 py-2 text-sm min-w-[130px]" value={cascadeNop} onChange={(e) => handleCascadeNop(e.target.value)} disabled={!cascadeRegional}>
+                <option value="">-- NOP --</option>
+                {nops.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+              </select>
+              <span className="text-gray-300">→</span>
+              <select className="border rounded-lg px-3 py-2 text-sm min-w-[130px]" value={cascadeTo} onChange={(e) => handleCascadeTo(e.target.value)} disabled={!cascadeNop}>
+                <option value="">-- TO --</option>
+                {tos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <span className="text-gray-300">→</span>
+              <select className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px]" value={filters.entityId} onChange={(e) => setFilters({ entityId: e.target.value })} disabled={!cascadeTo || sitesLoading}>
+                <option value="">{sitesLoading ? 'Memuat...' : '-- Pilih Site --'}</option>
+                {siteOptions.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
+              </select>
             </>
           )}
         </div>
