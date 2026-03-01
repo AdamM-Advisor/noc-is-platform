@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, AlertTriangle, BarChart3, PieChart as PieChartIcon, Layers } from 'lucide-react';
+import { RefreshCw, AlertTriangle, BarChart3, PieChart as PieChartIcon, Layers, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Line, ComposedChart,
@@ -458,6 +459,76 @@ function MiniHeatmap({ data, faultName }) {
   );
 }
 
+function NdcDistributionWidget({ entityLevel, entityId }) {
+  const [ndcData, setNdcData] = useState(null);
+  const [ndcLoading, setNdcLoading] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!entityId) { setNdcData(null); return; }
+    const load = async () => {
+      setNdcLoading(true);
+      try {
+        const url = entityLevel === 'site'
+          ? `/api/ndc/site/${entityId}`
+          : `/api/ndc/entity/${entityLevel}/${entityId}?limit=5`;
+        const res = await fetch(url);
+        const d = await res.json();
+        setNdcData(Array.isArray(d) ? d : []);
+      } catch {
+        setNdcData([]);
+      } finally {
+        setNdcLoading(false);
+      }
+    };
+    load();
+  }, [entityLevel, entityId]);
+
+  if (!entityId || ndcLoading) return null;
+  if (!ndcData || ndcData.length === 0) return null;
+
+  const items = entityLevel === 'site'
+    ? Object.entries(ndcData.reduce((acc, r) => {
+        acc[r.ndc_code] = (acc[r.ndc_code] || 0) + r.ticket_count;
+        return acc;
+      }, {})).map(([code, count]) => ({ ndc_code: code, ticket_count: count })).sort((a, b) => b.ticket_count - a.ticket_count).slice(0, 5)
+    : ndcData.slice(0, 5);
+
+  const maxTix = Math.max(...items.map(i => i.ticket_count || 0), 1);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <BookOpen size={14} className="text-[#1E40AF]" />
+          <h4 className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Distribusi NDC</h4>
+        </div>
+        <button
+          onClick={() => navigate('/ndc')}
+          className="text-xs text-[#1E40AF] hover:underline"
+        >
+          Lihat semua
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="font-mono text-[#1E40AF] w-28 shrink-0 truncate">{item.ndc_code}</span>
+            {item.title && <span className="text-[#475569] truncate flex-1 min-w-0">{item.title}</span>}
+            <div className="w-20 shrink-0">
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-[#1E40AF] rounded-full" style={{ width: `${(item.ticket_count / maxTix) * 100}%` }} />
+              </div>
+            </div>
+            <span className="font-mono text-[#0F172A] w-14 text-right shrink-0">{(item.ticket_count || 0).toLocaleString()}</span>
+            {item.pct != null && <span className="font-mono text-[#475569] w-12 text-right shrink-0">{item.pct}%</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GangguanPanel({
   overviewData,
   crossDimData,
@@ -467,6 +538,7 @@ export default function GangguanPanel({
   faultLevel,
   rcCategory,
   entityLevel,
+  entityId,
   onFaultClick,
   onRcClick,
   onDistributionDrillDown,
@@ -590,6 +662,8 @@ export default function GangguanPanel({
           <FaultRecommendations recs={crossDimData.recommendations} />
         </>
       )}
+
+      <NdcDistributionWidget entityLevel={entityLevel} entityId={entityId} />
 
       {!overviewData && !crossDimData && !loading && (
         <div className="text-center py-8 text-gray-400 text-sm">

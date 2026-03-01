@@ -282,6 +282,7 @@ export default function ProfilerPage() {
             faultLevel={filters.faultLevel}
             rcCategory={filters.rcCategory}
             entityLevel={filters.entityLevel}
+            entityId={filters.entityId}
             onFaultClick={(faultName) => {
               if (!faultName) {
                 setFilters({ faultLevel: '', rcCategory: '' });

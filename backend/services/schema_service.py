@@ -459,6 +459,193 @@ TABLES_DDL = [
             PRIMARY KEY (site_id)
         )
     """),
+    ("ndc_entries", """
+        CREATE TABLE IF NOT EXISTS ndc_entries (
+            ndc_code VARCHAR PRIMARY KEY,
+            category_code VARCHAR NOT NULL,
+            category_name VARCHAR NOT NULL,
+            rc_category VARCHAR NOT NULL,
+            rc_1 VARCHAR NOT NULL,
+            rc_2 VARCHAR,
+            title VARCHAR NOT NULL,
+            differentiator TEXT,
+            total_tickets INTEGER DEFAULT 0,
+            sla_breach_pct DOUBLE,
+            auto_resolve_pct DOUBLE,
+            avg_mttr_min DOUBLE,
+            median_mttr_min DOUBLE,
+            pct_critical DOUBLE,
+            pct_major DOUBLE,
+            pct_minor DOUBLE,
+            pct_low DOUBLE,
+            typical_severity VARCHAR,
+            escalation_pct DOUBLE,
+            repeat_pct DOUBLE,
+            calculated_priority VARCHAR,
+            priority_score DOUBLE,
+            pct_in_diamond DOUBLE,
+            pct_in_platinum DOUBLE,
+            pct_in_gold DOUBLE,
+            pct_in_silver DOUBLE,
+            pct_in_bronze DOUBLE,
+            pct_in_3t DOUBLE,
+            inap_match_pct DOUBLE,
+            common_inap_misclass VARCHAR,
+            status VARCHAR DEFAULT 'auto',
+            reviewed_by VARCHAR,
+            reviewed_at TIMESTAMP,
+            notes TEXT,
+            first_seen DATE,
+            last_seen DATE,
+            data_months INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_alarm_snapshot", """
+        CREATE TABLE IF NOT EXISTS ndc_alarm_snapshot (
+            ndc_code VARCHAR PRIMARY KEY,
+            typical_severity VARCHAR,
+            typical_ne_class VARCHAR,
+            typical_fault_level VARCHAR,
+            typical_impact VARCHAR,
+            typical_type_ticket VARCHAR,
+            typical_rat VARCHAR,
+            peak_hours_range VARCHAR,
+            peak_days VARCHAR,
+            seasonal_pattern VARCHAR,
+            avg_alarm_delay_desc VARCHAR,
+            site_class_distribution VARCHAR,
+            pct_3t DOUBLE,
+            pct_kriteria DOUBLE,
+            typical_device_age VARCHAR,
+            top_regions VARCHAR,
+            sample_size INTEGER,
+            calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_co_occurring_alarms", """
+        CREATE TABLE IF NOT EXISTS ndc_co_occurring_alarms (
+            id INTEGER PRIMARY KEY,
+            ndc_code VARCHAR NOT NULL,
+            co_alarm_description VARCHAR NOT NULL,
+            co_alarm_rc_category VARCHAR,
+            co_alarm_rc_1 VARCHAR,
+            co_occurrence_pct DOUBLE NOT NULL,
+            typical_lag_description VARCHAR,
+            typical_lag_min DOUBLE,
+            lag_direction VARCHAR,
+            sample_size INTEGER,
+            calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_symptoms", """
+        CREATE TABLE IF NOT EXISTS ndc_symptoms (
+            id INTEGER PRIMARY KEY,
+            ndc_code VARCHAR NOT NULL,
+            symptom_text VARCHAR NOT NULL,
+            symptom_type VARCHAR NOT NULL,
+            frequency_pct DOUBLE,
+            confidence VARCHAR DEFAULT 'medium',
+            source VARCHAR,
+            negative_note TEXT,
+            redirect_ndc VARCHAR,
+            sort_order INTEGER DEFAULT 0,
+            is_auto_generated BOOLEAN DEFAULT TRUE,
+            reviewed BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_diagnostic_steps", """
+        CREATE TABLE IF NOT EXISTS ndc_diagnostic_steps (
+            id INTEGER PRIMARY KEY,
+            ndc_code VARCHAR NOT NULL,
+            step_number INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            expected_result TEXT,
+            if_yes TEXT,
+            if_yes_goto_step INTEGER,
+            if_no TEXT,
+            if_no_goto_step INTEGER,
+            if_no_redirect_ndc VARCHAR,
+            avg_duration_min INTEGER,
+            success_rate_at_step DOUBLE,
+            cumulative_resolve_pct DOUBLE,
+            is_auto_generated BOOLEAN DEFAULT FALSE,
+            reviewed BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_resolution_paths", """
+        CREATE TABLE IF NOT EXISTS ndc_resolution_paths (
+            id INTEGER PRIMARY KEY,
+            ndc_code VARCHAR NOT NULL,
+            path_name VARCHAR NOT NULL,
+            sort_order INTEGER DEFAULT 0,
+            probability_pct DOUBLE,
+            avg_mttr_min DOUBLE,
+            sla_met_pct DOUBLE,
+            ticket_count INTEGER,
+            notes TEXT,
+            is_auto_generated BOOLEAN DEFAULT TRUE,
+            calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_resolution_steps", """
+        CREATE TABLE IF NOT EXISTS ndc_resolution_steps (
+            id INTEGER PRIMARY KEY,
+            path_id INTEGER NOT NULL,
+            step_number INTEGER NOT NULL,
+            step_text TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_escalation_matrix", """
+        CREATE TABLE IF NOT EXISTS ndc_escalation_matrix (
+            id INTEGER PRIMARY KEY,
+            ndc_code VARCHAR NOT NULL,
+            tier INTEGER NOT NULL,
+            role VARCHAR NOT NULL,
+            action TEXT NOT NULL,
+            max_duration VARCHAR,
+            sort_order INTEGER DEFAULT 0
+        )
+    """),
+    ("ndc_preventive_actions", """
+        CREATE TABLE IF NOT EXISTS ndc_preventive_actions (
+            id INTEGER PRIMARY KEY,
+            ndc_code VARCHAR NOT NULL,
+            action TEXT NOT NULL,
+            expected_impact TEXT,
+            effort_level VARCHAR,
+            sort_order INTEGER DEFAULT 0
+        )
+    """),
+    ("ndc_confusion_matrix", """
+        CREATE TABLE IF NOT EXISTS ndc_confusion_matrix (
+            id INTEGER PRIMARY KEY,
+            inap_rc_category VARCHAR,
+            inap_rc_1 VARCHAR,
+            confirmed_rc_category VARCHAR,
+            confirmed_rc_1 VARCHAR,
+            ticket_count INTEGER,
+            match_pct DOUBLE,
+            period_start DATE,
+            period_end DATE,
+            calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """),
+    ("ndc_site_distribution", """
+        CREATE TABLE IF NOT EXISTS ndc_site_distribution (
+            site_id VARCHAR NOT NULL,
+            ndc_code VARCHAR NOT NULL,
+            period VARCHAR NOT NULL,
+            ticket_count INTEGER,
+            pct_of_site_total DOUBLE,
+            avg_mttr_min DOUBLE,
+            PRIMARY KEY (site_id, ndc_code, period)
+        )
+    """),
 ]
 
 INDEXES_DDL = [
@@ -473,6 +660,18 @@ INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_pln_date ON ext_pln_outage(date)",
     "CREATE INDEX IF NOT EXISTS idx_pln_province ON ext_pln_outage(province)",
     "CREATE INDEX IF NOT EXISTS idx_annotations_date ON ext_annotations(date)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_category ON ndc_entries(category_code)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_priority ON ndc_entries(calculated_priority)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_rc ON ndc_entries(rc_1, rc_2)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_coalarm ON ndc_co_occurring_alarms(ndc_code)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_symptoms ON ndc_symptoms(ndc_code, symptom_type)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_diag ON ndc_diagnostic_steps(ndc_code, step_number)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_respath ON ndc_resolution_paths(ndc_code)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_resstep ON ndc_resolution_steps(path_id, step_number)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_esc ON ndc_escalation_matrix(ndc_code)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_prev ON ndc_preventive_actions(ndc_code)",
+    "CREATE INDEX IF NOT EXISTS idx_ndc_sitedist ON ndc_site_distribution(site_id, ndc_code)",
+    "CREATE INDEX IF NOT EXISTS idx_tickets_rc ON noc_tickets(rc_category, rc_1, rc_2)",
 ]
 
 VIEW_DDL = """

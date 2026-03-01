@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart } from 'lucide-react';
+import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart, BookOpen } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/profiler', icon: Search, label: 'Profiler' },
+  { to: '/ndc', icon: BookOpen, label: 'NDC Knowledge Base' },
   { to: '/report-card', icon: FileText, label: 'Report Card' },
   { to: '/saved-views', icon: Bookmark, label: 'Saved Views' },
   { to: '/comparison', icon: GitCompare, label: 'Perbandingan' },
