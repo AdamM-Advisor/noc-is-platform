@@ -32,10 +32,21 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 mkdir -p data uploads temp_chunks exports
 
-echo "=== Verifying python3 ==="
-which python3 || echo "WARNING: python3 not found in PATH"
-python3 --version 2>/dev/null || echo "WARNING: python3 not available"
+echo "=== Checking Python ==="
+PYTHON_BIN=""
+if command -v python3 &> /dev/null; then
+    PYTHON_BIN=$(command -v python3)
+elif [ -x "$HOME/workspace/.pythonlibs/bin/python3" ]; then
+    PYTHON_BIN="$HOME/workspace/.pythonlibs/bin/python3"
+fi
+
+if [ -n "$PYTHON_BIN" ]; then
+    echo "Python found at: $PYTHON_BIN"
+    $PYTHON_BIN --version
+    $PYTHON_BIN -c "import uvicorn; print('uvicorn available')"
+else
+    echo "ERROR: Python not found!"
+    exit 1
+fi
 
 echo "=== Build complete ==="
-echo "Deployment size:"
-du -sh . --exclude=.git --exclude=.pythonlibs 2>/dev/null
