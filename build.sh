@@ -5,27 +5,36 @@ echo "=== Building frontend ==="
 cd /home/runner/workspace/frontend
 npm run build
 
-echo "=== Locating Python ==="
+echo "=== Locating real CPython binary ==="
 cd /home/runner/workspace
 
-PYTHON_REAL=$(readlink -f "$(which python3)")
-echo "Python binary: $PYTHON_REAL"
-$PYTHON_REAL --version
-$PYTHON_REAL -c "import uvicorn; print('uvicorn OK')"
+WRAPPER_BIN=$(readlink -f "$(which python3)")
+REAL_PYTHON=$(strings "$WRAPPER_BIN" 2>/dev/null | grep -m1 '/nix/store/.*/bin/python$')
+LD_LIBS=$(strings "$WRAPPER_BIN" 2>/dev/null | grep -m1 '/nix/store/.*cpplibs/lib')
 
-PYTHONLIBS_DIR="/home/runner/workspace/.pythonlibs"
-SITE_PACKAGES="$PYTHONLIBS_DIR/lib/python3.11/site-packages"
+if [ -z "$REAL_PYTHON" ] || [ ! -x "$REAL_PYTHON" ]; then
+    echo "ERROR: Could not find real CPython binary"
+    exit 1
+fi
+
+echo "Real CPython: $REAL_PYTHON"
+$REAL_PYTHON --version
+
+SITE_PACKAGES="/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages"
 
 cat > /home/runner/workspace/run_server.sh << EOF
 #!/bin/bash
 export PYTHONPATH="$SITE_PACKAGES:\$PYTHONPATH"
-export PATH="$PYTHONLIBS_DIR/bin:\$PATH"
-exec "$PYTHON_REAL" -m uvicorn backend.main:app --host 0.0.0.0 --port 5000
+export LD_LIBRARY_PATH="$LD_LIBS:\$LD_LIBRARY_PATH"
+exec $REAL_PYTHON -m uvicorn backend.main:app --host 0.0.0.0 --port 5000
 EOF
 chmod +x /home/runner/workspace/run_server.sh
 
-echo "=== Testing run script ==="
+echo "=== Verifying ==="
 cat /home/runner/workspace/run_server.sh
+export PYTHONPATH="$SITE_PACKAGES"
+export LD_LIBRARY_PATH="$LD_LIBS"
+$REAL_PYTHON -c "import uvicorn; import duckdb; import fastapi; print('All imports OK')"
 
 echo "=== Cleaning up for deployment ==="
 rm -rf data
