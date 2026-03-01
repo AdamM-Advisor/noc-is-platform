@@ -6,11 +6,8 @@ attached_assets
 frontend/node_modules
 frontend/src
 frontend/index.html
-frontend/package.json
-frontend/package-lock.json
 frontend/vite.config.js
 node_modules
-.pythonlibs
 __pycache__
 .git
 .local
@@ -19,7 +16,3 @@ __pycache__
 .upm
 *.pyc
 *.log
-uv.lock
-package.json
-package-lock.json
-pyproject.toml

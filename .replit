@@ -60,7 +60,7 @@ externalPort = 8000
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "run_server.sh"]
+run = ["python3", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "5000"]
 build = ["bash", "build.sh"]
 
 [userenv]
