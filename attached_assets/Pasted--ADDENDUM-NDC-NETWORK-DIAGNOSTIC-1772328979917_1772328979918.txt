@@ -1,0 +1,1496 @@
+# ============================================================
+# ADDENDUM — NDC (NETWORK DIAGNOSTIC CODE) GENERATOR
+# NOC-IS Analytics Platform v1.0
+# Author: Dr. Adam M.
+# ============================================================
+#
+# REVISI: Diperkaya dengan adopsi DTC (Diagnostic Trouble Code)
+# otomotif. Setiap NDC entry memiliki 4 tab enrichment:
+#   Tab 1: Alarm Snapshot   (= DTC Freeze Frame)
+#   Tab 2: Symptom Patterns (= DTC Symptom List)
+#   Tab 3: Diagnostic Tree  (= DTC Diagnostic Steps)
+#   Tab 4: SOP Penanganan   (= DTC Repair Guide)
+#
+# PRASYARAT:
+#   Prompt 0-3 sudah dijalankan (schema + upload + master data)
+#   Data tiket sudah di-upload (minimal 3 bulan untuk statistik)
+#
+# HASIL YANG DIHARAPKAN:
+# ✅ NDC Discovery Engine — auto-discover unique (rc_category, rc_1, rc_2)
+# ✅ NDC Knowledge Base — kode + statistik + 4 tab enrichment
+# ✅ Tab 1: Alarm Snapshot — freeze frame kondisi saat gangguan
+# ✅ Tab 2: Symptom Patterns — gejala primer/sekunder/negatif
+# ✅ Tab 3: Diagnostic Tree — decision tree dengan branching
+# ✅ Tab 4: SOP Penanganan — multi-path resolusi + eskalasi + preventif
+# ✅ Confusion Matrix — INAP (suspected) vs Engineer (confirmed)
+# ✅ NDC Browser page — explore, filter, 4 tab detail, kurasi, export
+# ✅ Integrasi ke Profiler + Report Card + Rekomendasi + Laporan
+# ============================================================
+
+
+## 1. KONSEP & ANALOGI DTC
+
+```
+ADOPSI DTC OTOMOTIF KE NOC:
+
+  DTC Otomotif              NDC NOC-IS
+  ─────────────             ────────────
+  DTC Code (P0301)       →  NDC Code (NDC-PWR-0001)
+  ECU Sensor Readings    →  Alarm Snapshot: severity, NE class, RAT, impact
+  Freeze Frame           →  Alarm Snapshot: co-occurring alarms + temporal
+  Symptom List           →  Symptom Patterns: primer, sekunder, negatif
+  Diagnostic Steps       →  Diagnostic Tree: decision tree + branching
+  Repair Guide           →  SOP Penanganan: multi-path + eskalasi + preventif
+  Severity Level         →  Priority Score (HIGH/MEDIUM/LOW)
+  
+POSISI NDC DALAM ARSITEKTUR:
+
+  Data Tiket (noc_tickets)
+       │
+       │ aggregate per (rc_category, rc_1, rc_2)
+       ▼
+  ┌─────────────────┐
+  │  NDC GENERATOR  │ ← auto-discover dari data historis
+  │                 │ ← generate 4 tab enrichment per NDC
+  │                 │ ← bangun confusion matrix INAP vs Engineer
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  NDC KNOWLEDGE  │ ← tabel ndc_entries + 6 tabel enrichment
+  │  BASE           │ ← 4 tab per entry: Snapshot/Symptoms/Diag/SOP
+  │                 │ ← browsable, searchable, curation, exportable
+  └────────┬────────┘
+           │
+           ├──► Profiler: NDC distribution per site/entity
+           ├──► Report Card: Top 3 NDC per entity
+           ├──► Rekomendasi: R21-R23 berbasis NDC
+           ├──► Laporan: Section Top NDC di bulanan+
+           └──► Future: Site DNA L1 Base
+
+PERBEDAAN DENGAN PROFILER GANGGUAN (Prompt 8):
+  Prompt 8: Pareto gangguan, distribusi fault level, RC analysis
+            → DESKRIPTIF: "apa yang terjadi"
+  NDC:      Knowledge base terstruktur dengan kode unik per pattern
+            → KODIFIKASI: "ensiklopedia gangguan" yang reusable & learnable
+            → Setiap entry = mini-handbook lengkap dengan SOP
+```
+
+---
+
+## 2. DATABASE SCHEMA (7 TABEL)
+
+### 2A. Tabel Utama — `ndc_entries`
+
+```sql
+CREATE TABLE ndc_entries (
+    ndc_code VARCHAR PRIMARY KEY,       -- "NDC-PWR-0001"
+    
+    -- Identitas
+    category_code VARCHAR NOT NULL,     -- "PWR" / "TRX" / "RAD" / "AKT" / dll
+    category_name VARCHAR NOT NULL,     -- "Power System"
+    rc_1 VARCHAR NOT NULL,              -- "PLN Off" (dari data tiket)
+    rc_2 VARCHAR,                       -- "EAS tidak muncul" (bisa NULL)
+    title VARCHAR NOT NULL,             -- "PLN Off — EAS tidak muncul"
+    
+    -- Differentiator (kurasi manual — pembeda dengan NDC sejenis)
+    differentiator TEXT,                -- "Pada 0001 EAS tidak muncul. Pada 0002 EAS muncul tapi >3 jam"
+    
+    -- Statistik KPI (auto-calculated, refresh periodik)
+    total_tickets INTEGER DEFAULT 0,
+    sla_breach_pct DOUBLE,
+    auto_resolve_pct DOUBLE,
+    avg_mttr_min DOUBLE,
+    median_mttr_min DOUBLE,
+    
+    -- Severity distribution
+    pct_critical DOUBLE,
+    pct_major DOUBLE,
+    pct_minor DOUBLE,
+    pct_low DOUBLE,
+    typical_severity VARCHAR,
+    
+    -- Escalation & repeat
+    escalation_pct DOUBLE,
+    repeat_pct DOUBLE,
+    
+    -- Priority (auto-calculated)
+    calculated_priority VARCHAR,        -- "HIGH" / "MEDIUM" / "LOW"
+    priority_score DOUBLE,              -- 0-100
+    
+    -- Distribusi per site context
+    pct_in_diamond DOUBLE,
+    pct_in_platinum DOUBLE,
+    pct_in_gold DOUBLE,
+    pct_in_silver DOUBLE,
+    pct_in_bronze DOUBLE,
+    pct_in_3t DOUBLE,
+    
+    -- Confusion matrix summary
+    inap_match_pct DOUBLE,
+    common_inap_misclass VARCHAR,
+    
+    -- Kurasi
+    status VARCHAR DEFAULT 'auto',      -- "auto" / "reviewed" / "validated"
+    reviewed_by VARCHAR,
+    reviewed_at TIMESTAMP,
+    notes TEXT,
+    
+    -- Metadata
+    first_seen DATE,
+    last_seen DATE,
+    data_months INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ndc_category ON ndc_entries(category_code);
+CREATE INDEX idx_ndc_priority ON ndc_entries(calculated_priority, total_tickets DESC);
+CREATE INDEX idx_ndc_rc ON ndc_entries(rc_1, rc_2);
+```
+
+### 2B. Tab 1 — Alarm Snapshot (= DTC Freeze Frame)
+
+```sql
+-- Profil tipikal saat gangguan NDC ini terjadi.
+-- 100% auto-generated dari aggregate noc_tickets.
+
+CREATE TABLE ndc_alarm_snapshot (
+    ndc_code VARCHAR PRIMARY KEY REFERENCES ndc_entries(ndc_code),
+    
+    -- Typical Profile: MODE/distribusi per field
+    typical_severity VARCHAR,           -- "Minor (62.8%)"
+    typical_ne_class VARCHAR,           -- "eNodeB (78%), NodeB (15%)"
+    typical_fault_level VARCHAR,        -- "Enva Site (85.2%)"
+    typical_impact VARCHAR,             -- "3-MODERATE (55%)"
+    typical_type_ticket VARCHAR,        -- "Event (92%), Incident (8%)"
+    typical_rat VARCHAR,                -- "4G (65%), 2G,4G (22%)"
+    
+    -- Temporal Signature
+    peak_hours_range VARCHAR,           -- "00:00 — 05:00 (62% tiket)"
+    peak_days VARCHAR,                  -- "Selasa, Rabu (34% tiket)"
+    seasonal_pattern VARCHAR,           -- "Nov — Feb (musim hujan, +40% vol)"
+    avg_alarm_delay_desc VARCHAR,       -- "15 — 45 menit (PLN off → alarm muncul)"
+    
+    -- Site Signature
+    site_class_distribution VARCHAR,    -- "Bronze (68%), Silver (18%), Gold (9%)"
+    pct_3t DOUBLE,
+    pct_kriteria DOUBLE,
+    typical_device_age VARCHAR,         -- "5 — 8 tahun" (jika enrichment data ada)
+    top_regions VARCHAR,                -- "R03 (18%), R08 (15%)"
+    
+    -- Metadata
+    sample_size INTEGER,
+    calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Alarm yang sering muncul bersamaan (co-occurring).
+-- Auto-detected dari korelasi temporal: tiket LAIN di site yang sama
+-- dalam window ±4 jam dari tiket NDC ini.
+
+CREATE TABLE ndc_co_occurring_alarms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    
+    co_alarm_description VARCHAR NOT NULL,   -- "Battery Low Voltage"
+    co_alarm_rc_category VARCHAR,            -- "Power" (kategori alarm terkait)
+    co_alarm_rc_1 VARCHAR,                   -- "Baterai Lemah"
+    co_occurrence_pct DOUBLE NOT NULL,       -- 78.0 (% tiket NDC yg diikuti alarm ini)
+    typical_lag_description VARCHAR,         -- "15-30 menit setelah PLN off"
+    typical_lag_min DOUBLE,                  -- 22.5 (rata-rata lag dalam menit)
+    lag_direction VARCHAR,                   -- "after" / "before" / "concurrent"
+    
+    sample_size INTEGER,
+    calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ndc_coalarm ON ndc_co_occurring_alarms(ndc_code);
+```
+
+**Auto-generation logic — Alarm Snapshot:**
+
+```python
+def generate_alarm_snapshot(self, ndc_code: str, rc_category: str, rc_1: str, rc_2: str):
+    """
+    100% otomatis. Aggregate noc_tickets per NDC.
+    """
+    
+    # === Typical Profile ===
+    # Per field: hitung distribusi, ambil top 2-3 values sebagai string
+    sql_profile = """
+    WITH ndc_tickets AS (
+        SELECT t.*, ms.site_class, ms.flag_3t, ms.flag_kriteria
+        FROM noc_tickets t
+        LEFT JOIN master_site ms ON t.site_id = ms.site_id
+        WHERE t.rc_category = ? AND t.rc_1 = ?
+          AND (? IS NULL OR t.rc_2 = ?)
+    )
+    SELECT
+        -- Severity: top values + pct
+        (SELECT STRING_AGG(sv || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT severity as sv, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets GROUP BY severity ORDER BY COUNT(*) DESC LIMIT 3
+         )) as typical_severity,
+        
+        -- NE class: top values
+        (SELECT STRING_AGG(nc || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT ne_class as nc, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets WHERE ne_class IS NOT NULL GROUP BY ne_class ORDER BY COUNT(*) DESC LIMIT 3
+         )) as typical_ne_class,
+        
+        -- Fault level
+        (SELECT STRING_AGG(fl || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT fault_level as fl, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets WHERE fault_level IS NOT NULL GROUP BY fault_level ORDER BY COUNT(*) DESC LIMIT 2
+         )) as typical_fault_level,
+        
+        -- Impact
+        (SELECT STRING_AGG(imp || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT impact as imp, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets WHERE impact IS NOT NULL GROUP BY impact ORDER BY COUNT(*) DESC LIMIT 2
+         )) as typical_impact,
+        
+        -- Type ticket
+        (SELECT STRING_AGG(tt || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT type_ticket as tt, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets GROUP BY type_ticket ORDER BY COUNT(*) DESC LIMIT 2
+         )) as typical_type_ticket,
+        
+        -- RAT
+        (SELECT STRING_AGG(r || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT rat as r, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets WHERE rat IS NOT NULL GROUP BY rat ORDER BY COUNT(*) DESC LIMIT 3
+         )) as typical_rat,
+        
+        COUNT(*) as sample_size
+        
+    FROM ndc_tickets
+    """
+    
+    # === Temporal Signature ===
+    sql_temporal = """
+    WITH ndc_tickets AS (
+        SELECT * FROM noc_tickets
+        WHERE rc_category = ? AND rc_1 = ? AND (? IS NULL OR rc_2 = ?)
+    ),
+    hourly AS (
+        SELECT calc_hour_of_day as h, COUNT(*) as cnt,
+               ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets), 1) as pct
+        FROM ndc_tickets GROUP BY calc_hour_of_day
+    ),
+    -- Cari consecutive hour range dengan volume tertinggi (3-hour window)
+    peak_range AS (
+        SELECT h as start_h, 
+               SUM(pct) OVER (ORDER BY h ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING) as range_pct
+        FROM hourly ORDER BY range_pct DESC LIMIT 1
+    )
+    SELECT 
+        -- Peak hours range
+        (SELECT LPAD(start_h::TEXT, 2, '0') || ':00 — ' || LPAD(((start_h+5)%24)::TEXT, 2, '0') || ':00 (' || ROUND(range_pct,0) || '% tiket)' FROM peak_range) as peak_hours_range,
+        
+        -- Peak days (top 2)
+        (SELECT STRING_AGG(day_name || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT CASE calc_day_of_week 
+                WHEN 0 THEN 'Minggu' WHEN 1 THEN 'Senin' WHEN 2 THEN 'Selasa'
+                WHEN 3 THEN 'Rabu' WHEN 4 THEN 'Kamis' WHEN 5 THEN 'Jumat' WHEN 6 THEN 'Sabtu'
+            END as day_name,
+            ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets), 1) as pct
+            FROM ndc_tickets GROUP BY calc_day_of_week ORDER BY COUNT(*) DESC LIMIT 2
+         )) as peak_days,
+        
+        -- Seasonal: bulan dengan volume > 120% rata-rata
+        (SELECT STRING_AGG(month_name, ', ')
+         FROM (
+            SELECT CASE calc_month 
+                WHEN 1 THEN 'Jan' WHEN 2 THEN 'Feb' WHEN 3 THEN 'Mar' WHEN 4 THEN 'Apr'
+                WHEN 5 THEN 'Mei' WHEN 6 THEN 'Jun' WHEN 7 THEN 'Jul' WHEN 8 THEN 'Agu'
+                WHEN 9 THEN 'Sep' WHEN 10 THEN 'Okt' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Des'
+            END as month_name, COUNT(*) as cnt
+            FROM ndc_tickets GROUP BY calc_month
+            HAVING COUNT(*) > 1.2 * (SELECT COUNT(*)/12.0 FROM ndc_tickets)
+            ORDER BY calc_month
+         )) as seasonal_months
+    FROM ndc_tickets LIMIT 1
+    """
+    
+    # === Site Signature ===
+    sql_site = """
+    WITH ndc_tickets AS (
+        SELECT t.*, ms.site_class, ms.flag_3t, ms.flag_kriteria,
+               mr.regional_id, mr.name as regional_name
+        FROM noc_tickets t
+        LEFT JOIN master_site ms ON t.site_id = ms.site_id
+        LEFT JOIN master_to mt ON t.calc_to_id = mt.to_id
+        LEFT JOIN master_nop mn ON mt.nop_id = mn.nop_id
+        LEFT JOIN master_regional mr ON mn.regional_id = mr.regional_id
+        WHERE t.rc_category = ? AND t.rc_1 = ? AND (? IS NULL OR t.rc_2 = ?)
+    )
+    SELECT 
+        -- Site class distribution
+        (SELECT STRING_AGG(sc || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT site_class as sc, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets WHERE site_class IS NOT NULL GROUP BY site_class ORDER BY COUNT(*) DESC
+         )) as site_class_distribution,
+        
+        -- 3T percentage
+        ROUND(AVG(CASE WHEN flag_3t THEN 1 ELSE 0 END) * 100, 1) as pct_3t,
+        
+        -- Kriteria percentage
+        ROUND(AVG(CASE WHEN flag_kriteria THEN 1 ELSE 0 END) * 100, 1) as pct_kriteria,
+        
+        -- Top regions
+        (SELECT STRING_AGG(rn || ' (' || pct || '%)', ', ')
+         FROM (
+            SELECT regional_name as rn, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM ndc_tickets),1) as pct
+            FROM ndc_tickets WHERE regional_name IS NOT NULL GROUP BY regional_name ORDER BY COUNT(*) DESC LIMIT 3
+         )) as top_regions
+         
+    FROM ndc_tickets
+    """
+    
+    # === Co-occurring Alarms ===
+    sql_co_alarms = """
+    WITH ndc_base AS (
+        SELECT ticket_number_inap, site_id, occured_time, rc_1
+        FROM noc_tickets
+        WHERE rc_category = ? AND rc_1 = ? AND (? IS NULL OR rc_2 = ?)
+    ),
+    co_tickets AS (
+        SELECT 
+            t2.rc_category as co_rc_cat,
+            t2.rc_1 as co_rc_1,
+            COALESCE(t2.summary, t2.rc_1) as co_description,
+            EXTRACT(EPOCH FROM t2.occured_time - t1.occured_time) / 60.0 as lag_min
+        FROM ndc_base t1
+        JOIN noc_tickets t2 
+            ON t1.site_id = t2.site_id
+            AND t2.ticket_number_inap != t1.ticket_number_inap
+            AND ABS(EXTRACT(EPOCH FROM t2.occured_time - t1.occured_time)) < 14400  -- ±4 jam
+        WHERE t2.rc_1 != ?  -- exclude NDC yang sama
+    )
+    SELECT 
+        co_rc_1 as co_alarm_description,
+        co_rc_cat as co_alarm_rc_category,
+        co_rc_1 as co_alarm_rc_1,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ndc_base), 1) as co_occurrence_pct,
+        ROUND(AVG(lag_min), 0) as typical_lag_min,
+        CASE WHEN AVG(lag_min) > 0 THEN 'after' 
+             WHEN AVG(lag_min) < 0 THEN 'before' 
+             ELSE 'concurrent' END as lag_direction,
+        COUNT(*) as sample_size
+    FROM co_tickets
+    GROUP BY co_rc_cat, co_rc_1, co_description
+    HAVING COUNT(*) >= 10
+    ORDER BY COUNT(*) DESC
+    LIMIT 5
+    """
+    
+    # Execute semua, insert ke ndc_alarm_snapshot + ndc_co_occurring_alarms
+```
+
+### 2C. Tab 2 — Symptom Patterns (= DTC Symptom List)
+
+```sql
+-- Gejala yang teridentifikasi untuk NDC ini.
+-- Auto-extracted (keyword matching) + kurasi manual.
+
+CREATE TABLE ndc_symptoms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    
+    -- Symptom
+    symptom_text VARCHAR NOT NULL,          -- "Site unreachable / NE down"
+    symptom_type VARCHAR NOT NULL,          -- "primary" / "secondary" / "negative"
+    
+    -- Statistik
+    frequency_pct DOUBLE,                   -- 82.0 (% tiket NDC yang punya gejala ini)
+    confidence VARCHAR DEFAULT 'medium',    -- "high" / "medium" / "low"
+    source VARCHAR,                         -- "summary" / "description" / "alarm_correlation" /
+                                            -- "confusion_matrix" / "manual"
+    
+    -- Untuk negative symptoms
+    negative_note TEXT,                     -- "Jika ada alarm transmisi, bukan Power"
+    redirect_ndc VARCHAR,                   -- "NDC-TRX-0001" (jika negatif → cek NDC lain)
+    
+    -- Ordering & kurasi
+    sort_order INTEGER DEFAULT 0,
+    is_auto_generated BOOLEAN DEFAULT TRUE,
+    reviewed BOOLEAN DEFAULT FALSE,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ndc_symptoms ON ndc_symptoms(ndc_code, symptom_type, sort_order);
+```
+
+**Auto-extraction logic — Symptoms:**
+
+```python
+def extract_symptoms(self, ndc_code: str, rc_category: str, rc_1: str, rc_2: str):
+    """
+    Extract symptom patterns dari summary/description.
+    Pendekatan: keyword frequency matching (bukan NLP).
+    ~70% auto, ~30% perlu kurasi (terutama negative symptoms).
+    """
+    
+    # Step 1: Ambil semua summary + description untuk NDC ini
+    sql = """
+    SELECT summary, description 
+    FROM noc_tickets
+    WHERE rc_category = ? AND rc_1 = ?
+      AND (? IS NULL OR rc_2 = ?)
+      AND (summary IS NOT NULL OR description IS NOT NULL)
+    """
+    texts = db.execute(sql, [rc_category, rc_1, rc_2, rc_2])
+    total = len(texts)
+    if total == 0:
+        return []
+    
+    # Step 2: Predefined symptom keyword patterns
+    # Domain-specific patterns untuk NOC telekomunikasi
+    SYMPTOM_PATTERNS = {
+        "Site unreachable / NE down": {
+            "patterns": [r"site.*down", r"ne.*down", r"unreachable", r"not reachable", r"site.*off", r"ne.*off"],
+            "source": "summary"
+        },
+        "Multiple alarm: Power fail + Battery low": {
+            "patterns": [r"power.*fail.*batt", r"batt.*low.*power", r"power.*batt", r"power fail"],
+            "source": "alarm_correlation"
+        },
+        "EAS tidak muncul / no external alarm": {
+            "patterns": [r"eas.*tidak", r"eas.*no", r"no.*eas", r"eas.*off", r"external alarm.*tidak"],
+            "source": "description"
+        },
+        "Coverage gap di area site": {
+            "patterns": [r"coverage.*gap", r"no.*coverage", r"blank.*spot", r"layanan.*terganggu"],
+            "source": "impact_analysis"
+        },
+        "User complaint / gangguan layanan": {
+            "patterns": [r"user.*complain", r"pelanggan.*keluh", r"complaint", r"gangguan.*layanan", r"customer"],
+            "source": "description"
+        },
+        "Neighboring site overloaded": {
+            "patterns": [r"neighbor.*overload", r"traffic.*shift", r"cell.*congestion", r"handover.*fail"],
+            "source": "description"
+        },
+        "Alarm berulang / flapping": {
+            "patterns": [r"flapping", r"berulang", r"intermittent", r"recurring", r"repeat"],
+            "source": "summary"
+        },
+        "Timeout / response lambat": {
+            "patterns": [r"timeout", r"time.*out", r"lambat", r"slow.*response", r"delay"],
+            "source": "description"
+        },
+        "Link down / transmisi putus": {
+            "patterns": [r"link.*down", r"transmisi.*putus", r"fo.*putus", r"fiber.*cut"],
+            "source": "summary"
+        },
+    }
+    
+    # Step 3: Hitung frekuensi per pattern
+    import re
+    symptoms = []
+    for symptom_name, config in SYMPTOM_PATTERNS.items():
+        match_count = 0
+        for row in texts:
+            combined = f"{row.get('summary','')} {row.get('description','')}".lower()
+            if any(re.search(p, combined) for p in config["patterns"]):
+                match_count += 1
+        
+        freq_pct = round(match_count / total * 100, 1)
+        
+        if freq_pct >= 5:  # minimum threshold
+            symptoms.append({
+                'ndc_code': ndc_code,
+                'symptom_text': symptom_name,
+                'symptom_type': 'primary' if freq_pct >= 30 else 'secondary',
+                'frequency_pct': freq_pct,
+                'confidence': 'high' if freq_pct >= 50 else ('medium' if freq_pct >= 20 else 'low'),
+                'source': config["source"],
+                'is_auto_generated': True,
+            })
+    
+    symptoms.sort(key=lambda x: -x['frequency_pct'])
+    
+    # Step 4: Generate negative symptoms dari confusion matrix
+    # "Jika alarm X ada, kemungkinan bukan NDC ini → cek NDC lain"
+    negatives = self._generate_negative_symptoms(ndc_code, rc_category)
+    symptoms.extend(negatives)
+    
+    return symptoms
+
+def _generate_negative_symptoms(self, ndc_code: str, rc_category: str) -> list:
+    """
+    Auto-generate negative symptoms dari confusion matrix.
+    Logika: jika INAP sering salah klasifikasi dari kategori lain ke kategori ini,
+    maka alarm khas kategori lain = negative symptom.
+    """
+    sql = """
+    SELECT inap_rc_category, confirmed_rc_category, match_pct, ticket_count
+    FROM ndc_confusion_matrix
+    WHERE confirmed_rc_category = ?
+      AND inap_rc_category != ?
+      AND ticket_count >= 20
+    ORDER BY ticket_count DESC
+    LIMIT 3
+    """
+    rows = db.execute(sql, [rc_category, rc_category])
+    
+    negatives = []
+    CATEGORY_ALARM_HINTS = {
+        'Transmisi': 'alarm transmisi / link down / FO putus',
+        'Radio': 'alarm radio / RF fault / VSWR high',
+        'Power': 'alarm power / PLN off / baterai low',
+        'Aktivitas': 'alarm aktivitas pihak ketiga / galian',
+        'HW': 'alarm hardware / module fault',
+    }
+    
+    for row in rows:
+        other_cat = row['inap_rc_category']
+        if other_cat in CATEGORY_ALARM_HINTS:
+            negatives.append({
+                'ndc_code': ndc_code,
+                'symptom_text': f"TIDAK ada {CATEGORY_ALARM_HINTS[other_cat]}",
+                'symptom_type': 'negative',
+                'frequency_pct': None,
+                'confidence': 'medium',
+                'source': 'confusion_matrix',
+                'negative_note': f"Jika ada {CATEGORY_ALARM_HINTS[other_cat]}, kemungkinan bukan {ndc_code} — cek kategori {other_cat}.",
+                'is_auto_generated': True,
+            })
+    
+    return negatives
+```
+
+### 2D. Tab 3 — Diagnostic Tree (= DTC Diagnostic Steps)
+
+```sql
+-- Decision tree per NDC: langkah diagnostik dengan branching.
+-- Skeleton auto-generated, detail butuh kurasi manual.
+
+CREATE TABLE ndc_diagnostic_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    
+    step_number INTEGER NOT NULL,               -- 1, 2, 3, ...
+    action TEXT NOT NULL,                       -- "Cek status PLN area"
+    expected_result TEXT,                       -- "Konfirmasi PLN off di area site"
+    
+    -- Branching
+    if_yes TEXT,                                -- "Lanjut ke Step 2"
+    if_yes_goto_step INTEGER,                   -- 2 (step_number target)
+    if_no TEXT,                                 -- "Bukan PLN — cek NDC-PWR-0005"
+    if_no_goto_step INTEGER,                    -- NULL (exit tree)
+    if_no_redirect_ndc VARCHAR,                -- "NDC-PWR-0005" (link ke NDC lain)
+    
+    -- Metrics (auto-calculated dari MTTR per stage)
+    avg_duration_min INTEGER,                   -- estimasi waktu step ini
+    success_rate_at_step DOUBLE,                -- % tiket resolved di step ini
+    cumulative_resolve_pct DOUBLE,              -- % kumulatif resolved sampai step ini
+    
+    -- Kurasi
+    is_auto_generated BOOLEAN DEFAULT FALSE,
+    reviewed BOOLEAN DEFAULT FALSE,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ndc_diag ON ndc_diagnostic_steps(ndc_code, step_number);
+```
+
+**Auto-generation logic — Diagnostic Tree (skeleton):**
+
+```python
+def generate_diagnostic_skeleton(self, ndc_code: str, rc_category: str, rc_1: str, rc_2: str):
+    """
+    Generate SKELETON diagnostic tree dari pola resolusi historis.
+    ~40% auto, ~60% perlu kurasi (branching logic).
+    
+    Pendekatan: 
+    - Analisis MTTR stages: quartile distribusi resolusi
+    - Tiap quartile = 1 "stage" yang menjadi step skeleton
+    - Success rate = % tiket yang resolved di MTTR stage tersebut
+    """
+    
+    # Step 1: Hitung MTTR quartiles untuk NDC ini
+    sql_quartiles = """
+    SELECT 
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY calc_restore_time_min) as q1,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY calc_restore_time_min) as q2,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY calc_restore_time_min) as q3,
+        PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY calc_restore_time_min) as q4,
+        COUNT(*) as total
+    FROM noc_tickets
+    WHERE rc_category = ? AND rc_1 = ? AND (? IS NULL OR rc_2 = ?)
+      AND calc_restore_time_min IS NOT NULL
+    """
+    q = db.execute_one(sql_quartiles, [rc_category, rc_1, rc_2, rc_2])
+    total = q['total']
+    
+    # Step 2: Hitung % resolved per stage
+    sql_stages = """
+    SELECT 
+        CASE 
+            WHEN calc_restore_time_min <= ? THEN 'stage_1'
+            WHEN calc_restore_time_min <= ? THEN 'stage_2'
+            WHEN calc_restore_time_min <= ? THEN 'stage_3'
+            ELSE 'stage_4'
+        END as stage,
+        COUNT(*) as cnt,
+        ROUND(COUNT(*) * 100.0 / ?, 1) as pct,
+        MODE(resolution_action) as common_action,
+        ROUND(AVG(calc_restore_time_min), 0) as avg_duration
+    FROM noc_tickets
+    WHERE rc_category = ? AND rc_1 = ? AND (? IS NULL OR rc_2 = ?)
+      AND calc_restore_time_min IS NOT NULL
+    GROUP BY stage
+    ORDER BY stage
+    """
+    stages = db.execute(sql_stages, [q['q1'], q['q2'], q['q3'], total, rc_category, rc_1, rc_2, rc_2])
+    
+    # Step 3: Generate skeleton steps
+    skeleton = [
+        {
+            'step_number': 1,
+            'action': f"Identifikasi dan konfirmasi gangguan: {rc_1}" + (f" — {rc_2}" if rc_2 else ""),
+            'expected_result': f"Konfirmasi bahwa root cause adalah {rc_1}",
+            'if_yes': "Lanjut ke Step 2",
+            'if_no': "Bukan gangguan ini — evaluasi ulang klasifikasi",
+            'avg_duration_min': 5,
+            'success_rate_at_step': None,
+            'cumulative_resolve_pct': 0,
+            'is_auto_generated': True,
+        }
+    ]
+    
+    cumulative = 0
+    for i, stage in enumerate(stages):
+        cumulative += stage['pct']
+        skeleton.append({
+            'step_number': i + 2,
+            'action': stage['common_action'] or f"Resolusi stage {i+1} (MTTR ~{stage['avg_duration']}m)",
+            'expected_result': "Gangguan teratasi",
+            'if_yes': "Verifikasi dan close tiket" if i == len(stages)-1 else f"Lanjut ke Step {i+3}",
+            'if_no': "Eskalasi ke level berikutnya" if i < len(stages)-1 else "Eskalasi ke management",
+            'avg_duration_min': stage['avg_duration'],
+            'success_rate_at_step': stage['pct'],
+            'cumulative_resolve_pct': round(cumulative, 1),
+            'is_auto_generated': True,
+        })
+    
+    # Last step: verifikasi
+    skeleton.append({
+        'step_number': len(skeleton) + 1,
+        'action': "Verifikasi: semua NE up, alarm clear, layanan normal",
+        'expected_result': "Site fully operational",
+        'if_yes': "Close tiket. Update RCA.",
+        'if_no': "Ada alarm tersisa — buat tiket baru per alarm type",
+        'avg_duration_min': 15,
+        'success_rate_at_step': round(100 - cumulative, 1),
+        'cumulative_resolve_pct': 100.0,
+        'is_auto_generated': True,
+    })
+    
+    return skeleton
+```
+
+### 2E. Tab 4 — SOP Penanganan (= DTC Repair Guide)
+
+```sql
+-- Multiple resolution paths per NDC, ranked by probabilitas.
+-- Auto-clustered dari MTTR + auto_resolve + escalation_level.
+
+CREATE TABLE ndc_resolution_paths (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    
+    path_name VARCHAR NOT NULL,             -- "Auto-Resolve (PLN kembali < 3 jam)"
+    sort_order INTEGER DEFAULT 0,
+    
+    -- Statistik (auto-calculated)
+    probability_pct DOUBLE,                 -- 71.9
+    avg_mttr_min DOUBLE,                    -- 95
+    sla_met_pct DOUBLE,                     -- 98.5
+    ticket_count INTEGER,
+    
+    -- Kurasi
+    notes TEXT,                             -- "Path paling umum. Tidak butuh dispatch."
+    is_auto_generated BOOLEAN DEFAULT TRUE,
+    
+    calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ndc_respath ON ndc_resolution_paths(ndc_code, sort_order);
+
+
+-- Steps per resolution path
+
+CREATE TABLE ndc_resolution_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path_id INTEGER REFERENCES ndc_resolution_paths(id) ON DELETE CASCADE,
+    
+    step_number INTEGER NOT NULL,
+    step_text TEXT NOT NULL,                 -- "PLN off terdeteksi (via alarm)"
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ndc_resstep ON ndc_resolution_steps(path_id, step_number);
+
+
+-- Eskalasi matrix per NDC
+
+CREATE TABLE ndc_escalation_matrix (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    
+    tier INTEGER NOT NULL,                  -- 1, 2, 3, 4
+    role VARCHAR NOT NULL,                  -- "NOC Operator"
+    action TEXT NOT NULL,                   -- "Monitoring + koordinasi PLN"
+    max_duration VARCHAR,                   -- "3 jam"
+    
+    sort_order INTEGER DEFAULT 0
+);
+
+CREATE INDEX idx_ndc_esc ON ndc_escalation_matrix(ndc_code, tier);
+
+
+-- Aksi preventif per NDC
+
+CREATE TABLE ndc_preventive_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    
+    action TEXT NOT NULL,                   -- "Instalasi EAS di semua site tanpa EAS"
+    expected_impact TEXT,                   -- "MTTR turun ~30 menit"
+    effort_level VARCHAR,                   -- "LOW" / "MEDIUM" / "HIGH"
+    
+    sort_order INTEGER DEFAULT 0
+);
+
+CREATE INDEX idx_ndc_prev ON ndc_preventive_actions(ndc_code, sort_order);
+```
+
+**Auto-generation logic — Resolution Paths:**
+
+```python
+def generate_resolution_paths(self, ndc_code: str, rc_category: str, rc_1: str, rc_2: str):
+    """
+    Cluster tiket NDC menjadi resolution paths.
+    ~80% auto (clustering + stats), ~20% kurasi (naming + notes).
+    """
+    
+    # Clustering: 5 natural paths
+    sql = """
+    WITH ndc_tickets AS (
+        SELECT * FROM noc_tickets
+        WHERE rc_category = ? AND rc_1 = ? AND (? IS NULL OR rc_2 = ?)
+          AND calc_restore_time_min IS NOT NULL
+    ),
+    total AS (SELECT COUNT(*) as cnt FROM ndc_tickets)
+    SELECT 
+        CASE 
+            WHEN is_auto_resolved = 'Auto Resolved' THEN 'Auto-Resolve'
+            WHEN escalation_level IS NOT NULL AND escalation_level > 0 THEN 'Eskalasi'
+            WHEN calc_restore_time_min <= (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY calc_restore_time_min) FROM ndc_tickets) 
+                THEN 'Standard Resolution'
+            ELSE 'Extended Resolution'
+        END as path_cluster,
+        COUNT(*) as cnt,
+        ROUND(COUNT(*) * 100.0 / (SELECT cnt FROM total), 1) as probability_pct,
+        ROUND(AVG(calc_restore_time_min), 0) as avg_mttr_min,
+        ROUND(AVG(CASE WHEN calc_is_sla_met THEN 1 ELSE 0 END) * 100, 1) as sla_met_pct,
+        MODE(resolution_action) as common_action
+    FROM ndc_tickets
+    GROUP BY path_cluster
+    HAVING COUNT(*) >= 5
+    ORDER BY cnt DESC
+    """
+    
+    paths = db.execute(sql, [rc_category, rc_1, rc_2, rc_2])
+    
+    for i, path in enumerate(paths):
+        # Insert path
+        path_id = db.insert('ndc_resolution_paths', {
+            'ndc_code': ndc_code,
+            'path_name': path['path_cluster'],
+            'sort_order': i,
+            'probability_pct': path['probability_pct'],
+            'avg_mttr_min': path['avg_mttr_min'],
+            'sla_met_pct': path['sla_met_pct'],
+            'ticket_count': path['cnt'],
+            'is_auto_generated': True,
+        })
+        
+        # Generate steps per path dari common resolution_action
+        steps = self._extract_path_steps(path['path_cluster'], rc_category, rc_1, rc_2)
+        for si, step in enumerate(steps):
+            db.insert('ndc_resolution_steps', {
+                'path_id': path_id,
+                'step_number': si + 1,
+                'step_text': step,
+            })
+    
+    return paths
+
+def _extract_path_steps(self, path_cluster: str, rc_category: str, rc_1: str, rc_2: str) -> list:
+    """
+    Extract resolution steps dari field resolution_action per path cluster.
+    Split comma/semicolon-separated actions menjadi individual steps.
+    """
+    sql = """
+    SELECT resolution_action, COUNT(*) as cnt
+    FROM noc_tickets
+    WHERE rc_category = ? AND rc_1 = ? AND (? IS NULL OR rc_2 = ?)
+      AND resolution_action IS NOT NULL
+      AND CASE 
+            WHEN is_auto_resolved = 'Auto Resolved' THEN 'Auto-Resolve'
+            WHEN escalation_level > 0 THEN 'Eskalasi'
+            WHEN calc_restore_time_min <= (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY calc_restore_time_min) FROM noc_tickets WHERE rc_category = ? AND rc_1 = ?)
+                THEN 'Standard Resolution'
+            ELSE 'Extended Resolution'
+          END = ?
+    GROUP BY resolution_action
+    ORDER BY cnt DESC
+    LIMIT 5
+    """
+    # Parse top resolution actions into step sequence
+    # Split by ",", ";", "then", "lalu", "kemudian"
+    # Deduplicate and order
+    
+    return steps
+
+def generate_escalation_matrix(self, ndc_code: str):
+    """
+    Generate default escalation matrix.
+    ~20% auto (dari data eskalasi), ~80% template organisasi.
+    """
+    DEFAULT_MATRIX = [
+        {'tier': 1, 'role': 'NOC Operator',    'action': 'Monitoring awal + identifikasi gangguan',   'max_duration': '1 jam'},
+        {'tier': 2, 'role': 'TL NOC / Dispatch','action': 'Dispatch engineer + koordinasi lapangan',   'max_duration': '3 jam'},
+        {'tier': 3, 'role': 'NOP Manager',      'action': 'Resource reallocation + eskalasi vendor',   'max_duration': '6 jam'},
+        {'tier': 4, 'role': 'Regional Manager',  'action': 'Strategic decision + management eskalasi', 'max_duration': '24 jam'},
+    ]
+    
+    # Enrich dari data: hitung avg time per escalation level
+    sql = """
+    SELECT escalation_level, 
+           ROUND(AVG(calc_restore_time_min)/60, 1) as avg_hours,
+           COUNT(*) as cnt
+    FROM noc_tickets
+    WHERE rc_category = (SELECT rc_category FROM ndc_entries WHERE ndc_code = ?)
+      AND rc_1 = (SELECT rc_1 FROM ndc_entries WHERE ndc_code = ?)
+      AND escalation_level IS NOT NULL AND escalation_level > 0
+    GROUP BY escalation_level
+    """
+    esc_data = db.execute(sql, [ndc_code, ndc_code])
+    
+    # Merge template dengan data aktual
+    for row in esc_data:
+        tier = row['escalation_level']
+        if tier <= len(DEFAULT_MATRIX):
+            DEFAULT_MATRIX[tier-1]['max_duration'] = f"~{row['avg_hours']} jam (data aktual)"
+    
+    for entry in DEFAULT_MATRIX:
+        db.insert('ndc_escalation_matrix', {
+            'ndc_code': ndc_code, **entry, 'sort_order': entry['tier']
+        })
+```
+
+### 2F. Tabel Confusion Matrix (tidak berubah)
+
+```sql
+CREATE TABLE ndc_confusion_matrix (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inap_rc_category VARCHAR,
+    inap_rc_1 VARCHAR,
+    confirmed_rc_category VARCHAR,
+    confirmed_rc_1 VARCHAR,
+    ticket_count INTEGER,
+    match_pct DOUBLE,
+    period_start DATE,
+    period_end DATE,
+    calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 2G. Tabel NDC per Site (tidak berubah)
+
+```sql
+CREATE TABLE ndc_site_distribution (
+    site_id VARCHAR,
+    ndc_code VARCHAR REFERENCES ndc_entries(ndc_code),
+    period VARCHAR,
+    ticket_count INTEGER,
+    pct_of_site_total DOUBLE,
+    avg_mttr_min DOUBLE,
+    PRIMARY KEY (site_id, ndc_code, period)
+);
+```
+
+### RINGKASAN SCHEMA: 10 TABEL
+
+```
+┌─────────────────────────────┬─────────────┬───────────────────────────────────────┐
+│ Tabel                       │ Auto-gen %  │ Fungsi                                │
+├─────────────────────────────┼─────────────┼───────────────────────────────────────┤
+│ ndc_entries                 │ 100%        │ Tabel utama: kode + KPI + priority    │
+│ ndc_alarm_snapshot          │ 100%        │ Tab 1: freeze frame                   │
+│ ndc_co_occurring_alarms     │  90%        │ Tab 1: alarm yang menyertai           │
+│ ndc_symptoms                │  70%        │ Tab 2: gejala primer/sekunder/negatif │
+│ ndc_diagnostic_steps        │  40%        │ Tab 3: decision tree + branching      │
+│ ndc_resolution_paths        │  80%        │ Tab 4: jalur resolusi + probabilitas  │
+│ ndc_resolution_steps        │  60%        │ Tab 4: steps per path                 │
+│ ndc_escalation_matrix       │  20%        │ Tab 4: eskalasi tier 1-4              │
+│ ndc_preventive_actions      │  10%        │ Tab 4: aksi preventif + effort level  │
+│ ndc_confusion_matrix        │ 100%        │ INAP vs Engineer accuracy             │
+│ ndc_site_distribution       │ 100%        │ Distribusi NDC per site               │
+└─────────────────────────────┴─────────────┴───────────────────────────────────────┘
+```
+
+---
+
+## 3. NDC DISCOVERY ENGINE — FULL REFRESH
+
+```python
+class NDCDiscoveryEngine:
+    """Orchestrator: discovery + semua enrichments."""
+    
+    CATEGORY_MAP = {
+        'Power':      {'code': 'PWR', 'name': 'Power System'},
+        'Radio':      {'code': 'RAD', 'name': 'Radio Access'},
+        'Transmisi':  {'code': 'TRX', 'name': 'Transmission'},
+        'Aktivitas':  {'code': 'AKT', 'name': 'Aktivitas Pihak Ketiga'},
+        'CME':        {'code': 'CME', 'name': 'Civil Mechanical Electrical'},
+        'LOGIC':      {'code': 'LOG', 'name': 'Logic/Software'},
+        'HW':         {'code': 'HW',  'name': 'Hardware'},
+    }
+    DEFAULT_CATEGORY = {'code': 'OTH', 'name': 'Other'}
+    MIN_TICKETS = 10
+    
+    def full_refresh(self):
+        """
+        Full refresh: discovery + 4 tab enrichment per NDC.
+        Dipanggil setelah upload data baru.
+        Existing NDC codes dipertahankan — hanya stats yang di-update.
+        NDC baru ditambahkan jika ditemukan kombinasi baru.
+        """
+        entries = self._discover_entries()
+        
+        for entry in entries:
+            code = entry['ndc_code']
+            rc_cat = entry['rc_category']
+            rc1 = entry['rc_1']
+            rc2 = entry['rc_2']
+            
+            # Upsert base entry
+            self._upsert_entry(entry)
+            
+            # Tab 1: Alarm Snapshot (100% auto)
+            self.generate_alarm_snapshot(code, rc_cat, rc1, rc2)
+            
+            # Tab 2: Symptoms (70% auto)
+            self.extract_symptoms(code, rc_cat, rc1, rc2)
+            
+            # Tab 3: Diagnostic Tree skeleton (40% auto)
+            if not self._has_reviewed_diagnostics(code):
+                self.generate_diagnostic_skeleton(code, rc_cat, rc1, rc2)
+            
+            # Tab 4: Resolution Paths (80% auto)
+            self.generate_resolution_paths(code, rc_cat, rc1, rc2)
+            self.generate_escalation_matrix(code)
+            # Preventive actions: NOT auto-generated (10% — mostly manual)
+        
+        # Global: Confusion Matrix
+        self.build_confusion_matrix()
+        
+        # Global: Site Distribution
+        self.refresh_site_distributions()
+    
+    def _has_reviewed_diagnostics(self, ndc_code: str) -> bool:
+        """Jangan overwrite diagnostic tree yang sudah di-kurasi manual."""
+        sql = "SELECT COUNT(*) as cnt FROM ndc_diagnostic_steps WHERE ndc_code = ? AND reviewed = TRUE"
+        return db.execute_one(sql, [ndc_code])['cnt'] > 0
+    
+    def _calc_priority(self, row) -> float:
+        """Priority score 0-100: volume(30%) + breach(30%) + severity(20%) + MTTR(20%)"""
+        import math
+        vol = min(100, math.log10(max(row['total_tickets'], 1)) / math.log10(50000) * 100)
+        breach = min(100, row['sla_breach_pct'] * 2)
+        sev = min(100, row['pct_critical'] * 2 + row['pct_major'])
+        mttr = min(100, (row['avg_mttr_min'] / 1440) * 100)
+        return round(vol * 0.3 + breach * 0.3 + sev * 0.2 + mttr * 0.2, 1)
+```
+
+---
+
+## 4. NDC BROWSER PAGE — 4 TAB DETAIL
+
+### 4A. Halaman Utama (3 view tabs)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  NDC Knowledge Base                                    [Refresh NDC] │
+│  Author: Dr. Adam M.                                                 │
+│                                                                       │
+│  [NDC Browser] [Confusion Matrix] [NDC per Site]                     │
+│                                                                       │
+│  ── Filter ──                                                        │
+│  Kategori: [Semua ▾]  Priority: [Semua ▾]  Status: [Semua ▾]        │
+│  Cari: [________________]              47 entries | 96.3% coverage   │
+│                                                                       │
+│  Code          Title                    Vol     Breach  MTTR   Pri   │
+│  NDC-PWR-0001  PLN Off — EAS            30.059  5.7%   196m   HIGH  │
+│  NDC-PWR-0002  PLN Off — >3 jam         16.409  18.2%  385m   HIGH  │
+│  NDC-TRX-0001  FO Telkom Putus          2.840   32.1%  720m   HIGH  │
+│  ...                                                                  │
+│  Klik baris → expand NDC detail (4 tab)                               │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 4B. NDC Detail — 4 Tab (saat baris di-expand)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  NDC-PWR-0001  PWR  ● HIGH  [validated]                              │
+│  PLN Off — EAS tidak muncul                                         │
+│  30.059 tiket · Breach 5.7% · Auto-resolve 71.9% · MTTR 196m       │
+│                                                                       │
+│  [Alarm Snapshot] [Symptoms] [Diagnostic Tree] [SOP Penanganan]     │
+│  ═══════════════════════════════════════════════════════════════════ │
+│                                                                       │
+│  (konten tab aktif — lihat Section 5 untuk layout per tab)           │
+│                                                                       │
+│  Status: [auto] [reviewed] [validated]     [Mark as Reviewed]        │
+│  Notes: [_______________________________________] [Save]             │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 5. LAYOUT PER TAB
+
+### Tab 1: Alarm Snapshot
+
+```
+Kondisi tipikal saat gangguan ini terjadi (30.059 tiket dianalisis).
+
+┌ Profil Tipikal ───────────────┐  ┌ Tanda Waktu ──────────────────┐
+│ Severity:   Minor (62.8%)     │  │ Peak hours: 00:00-05:00 (62%) │
+│ NE Class:   eNodeB (78%)      │  │ Peak days:  Selasa, Rabu (34%)│
+│ Fault Lvl:  Enva Site (85.2%) │  │ Seasonal:   Nov-Feb (+40%)    │
+│ Impact:     3-MODERATE (55%)  │  │ Alarm delay: 15-45 menit      │
+│ Tipe:       Event (92%)       │  │                                │
+│ RAT:        4G (65%)          │  │                                │
+└───────────────────────────────┘  └────────────────────────────────┘
+
+┌ Profil Site ──────────────────┐  ┌ Alarm yang Sering Menyertai ──┐
+│ Class: Bronze 68%, Silver 18% │  │ Battery Low Voltage   78% ████│
+│ 3T: 42%  Kriteria: 28%       │  │   → 15-30 mnt setelah         │
+│ Region: R03 (18%), R08 (15%) │  │ Rectifier Fail        35% ██  │
+│                                │  │   → 1-2 jam setelah           │
+│                                │  │ NE Unreachable        22% █   │
+│                                │  │   → 2-4 jam (baterai habis)   │
+└────────────────────────────────┘  └────────────────────────────────┘
+```
+
+### Tab 2: Symptoms
+
+```
+Gejala Primer (sering muncul):                             Frekuensi
+  1. Site unreachable / NE down                              82%  high
+  2. Multiple alarm: Power fail + Battery low                78%  high
+  3. EAS tidak muncul / no external alarm                    65%  high
+  4. Coverage gap di area site                               45%  medium
+
+Gejala Sekunder (kadang muncul):
+  - User complaint: tidak bisa telepon/internet              28%  medium
+  - Neighboring site overloaded                              15%  low
+
+Gejala Negatif (jika ada, BUKAN NDC ini):
+  ┌─ TIDAK ada alarm transmisi / link down / FO putus ──────────────┐
+  │  Jika ada → kemungkinan bukan Power. Cek NDC-TRX-0001           │
+  └─────────────────────────────────────────────────────────────────┘
+  ┌─ TIDAK ada alarm hardware / module fault ────────────────────────┐
+  │  Jika ada → kemungkinan NDC-HW atau NDC-RAD                     │
+  └─────────────────────────────────────────────────────────────────┘
+
+Pembeda dengan NDC Sejenis:
+  NDC-PWR-0001 vs 0002: pada 0001, EAS tidak muncul (PLN off tapi
+  tidak terdeteksi sensor). Pada 0002, EAS muncul tapi durasi >3 jam.
+```
+
+### Tab 3: Diagnostic Tree
+
+```
+Klik step untuk expand branching (YA / TIDAK).
+
+(1) Cek status PLN area via dashboard PLN              ~5 menit
+    ├ YA → Konfirmasi PLN off. Lanjut Step 2
+    └ TIDAK → Bukan PLN Off. Cek NDC-PWR-0005 (Rectifier)
+
+(2) Cek EAS sensor — terpasang dan berfungsi?          ~10 menit
+    ├ YA → EAS malfungsi. Lanjut Step 3
+    └ TIDAK → EAS belum terpasang. Jadwalkan instalasi. Lanjut Step 4
+
+(3) Remote reset EAS via NMS                           ~15 mnt · 71.9% resolved
+    ├ YA → Monitor 1 jam. Jika stabil, close tiket.
+    └ TIDAK → EAS perlu ganti hardware. Buat tiket PM.
+
+(4) Estimasi durasi PLN off. Hubungi PLN area.         ~10 mnt · 71.9% resolved
+    ├ YA (ETA <3 jam) → Monitoring mode. Tunggu recovery.
+    └ TIDAK (ETA >3 jam) → Lanjut Step 5 (dispatch genset)
+
+(5) Dispatch genset mobile ke site                     ~120 mnt · 92.5% resolved
+    ├ YA → Monitor 30 mnt. Close setelah PLN kembali.
+    └ TIDAK → Genset tidak tersedia. Eskalasi NOP Manager.
+
+(6) Verifikasi: semua NE up, alarm clear, baterai ok    ~15 mnt · 98.2% resolved
+    ├ YA → Close tiket. Update RCA.
+    └ TIDAK → Alarm tersisa. Buat tiket baru per alarm.
+```
+
+### Tab 4: SOP Penanganan
+
+```
+── Jalur Resolusi (klik untuk expand steps) ──
+
+┌ 71.9% │ Auto-Resolve (PLN kembali < 3 jam) ─────── SLA 98.5% ███████████┐
+│ MTTR avg: 95m | 21.578 tiket                                             │
+│ 1. PLN off terdeteksi (via alarm atau laporan)                           │
+│ 2. Sistem monitoring: tunggu PLN recovery                                │
+│ 3. PLN kembali → NE auto-restart → alarm clear                          │
+│ 4. Verifikasi otomatis: semua NE up                                      │
+│ 5. Tiket auto-close                                                      │
+│ Path paling umum. Tidak butuh dispatch.                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌ 18.2% │ Dispatch Genset (PLN off > 3 jam) ──────── SLA 82.3% ████████   ┐
+│ MTTR avg: 285m | 5.471 tiket                                             │
+│ 1. PLN off > 3 jam, auto-resolve gagal                                   │
+│ 2. Koordinasi PLN area: ETA pemulihan                                    │
+│ 3. Request genset mobile ke pool terdekat                                │
+│ 4. Dispatch genset ke site (avg 90 mnt transit)                          │
+│ 5. Instalasi genset, site kembali on-air                                 │
+│ 6. Setelah PLN kembali: cabut genset, verifikasi                        │
+│ Bottleneck: ketersediaan dan jarak genset. Site 3T +45 mnt transit.      │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌  6.8% │ Eskalasi NOP (genset tidak tersedia) ──── SLA 45.2% ████        ┐
+│ ...                                                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌  3.1% │ Root Cause: EAS Malfunction ────────────── SLA 92.1% █████████  ┐
+│ ...                                                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+── Matriks Eskalasi ──              ── Aksi Preventif ──
+TIER 1  NOC Operator   max 1 jam    1. Instalasi EAS [MEDIUM]
+TIER 2  TL NOC         max 3 jam       → MTTR turun ~30 menit
+TIER 3  NOP Manager    max 6 jam    2. Pre-position genset [HIGH]
+TIER 4  Regional Mgr   max 24 jam      → Transit turun 50%
+                                     3. Evaluasi baterai [MEDIUM]
+                                        → Auto-resolve naik ~10pp
+                                     4. Koordinasi PLN rutin [LOW]
+                                        → 40% PLN off bisa diprediksi
+```
+
+---
+
+## 6. INTEGRASI KE FITUR EXISTING
+
+### 6A. Profiler — Panel Gangguan (Prompt 8)
+
+```
+Tambahkan section "NDC Distribution" di Profiler panel gangguan:
+
+NDC Distribution (12 bulan terakhir):
+NDC-PWR-0001  PLN Off — EAS          45%  ████████████
+NDC-PWR-0003  PLN Off — Berulang     25%  ██████
+NDC-TRX-0001  FO Telkom Putus        15%  ████
+NDC-RAD-0001  Radio Fault            10%  ███
+Other                                  5%  █
+
+Klik NDC code → buka NDC detail (4 tab enrichment)
+
+Saat profil TO/NOP/Regional:
+  Top 5 NDC per entity + distribusi %
+  "NDC-PWR-0001 di entity ini 45% vs nasional 35%"
+```
+
+### 6B. Report Card
+
+```
+Section "Top NDC" di Report Card:
+  Top 3 NDC:
+  1. NDC-PWR-0001 (45%) — PLN Off, EAS tidak muncul
+  2. NDC-PWR-0003 (25%) — PLN Off, Berulang
+  3. NDC-TRX-0001 (15%) — FO Telkom Putus
+```
+
+### 6C. Rekomendasi Engine — 3 Rule Baru
+
+```
+R21: NDC concentration
+  trigger: top_1_ndc_pct > 50%
+  priority: MINGGU_INI
+  message: "50%+ gangguan adalah {ndc_title}."
+  action: "Buka NDC {ndc_code} → Tab SOP untuk resolusi teruji."
+
+R22: INAP misclassification
+  trigger: inap_match_pct < 50% untuk NDC tertentu
+  priority: BULAN_INI
+  message: "INAP salah klasifikasi {pct}% untuk {ndc_title}."
+  action: "Buka NDC → Tab Symptoms untuk pattern yang seharusnya."
+
+R23: Preventive opportunity
+  trigger: repeat_pct > 25% AND ndc has preventive_actions
+  priority: BULAN_INI
+  message: "NDC {ndc_title} repeat rate {pct}%. Ada {n} aksi preventif."
+  action: "Buka NDC {ndc_code} → Tab SOP → Aksi Preventif."
+```
+
+### 6D. Report Generator — Laporan Bulanan+
+
+```
+Tambahkan section NDC di template laporan bulanan:
+
+── N. TOP NDC BULAN INI ──
+[Tabel: Top 5 NDC × Volume × Breach × MTTR × Priority]
+Narasi: "80% gangguan bulan ini terkait Power (NDC-PWR-*).
+3 NDC tertinggi sudah memiliki SOP tervalidasi."
+```
+
+---
+
+## 7. API ENDPOINTS
+
+```
+# ── NDC Core ──
+GET    /api/ndc                             → list (filter, sort, paginate)
+GET    /api/ndc/{code}                      → detail + semua enrichments (4 tab)
+POST   /api/ndc/refresh                     → full refresh: discovery + enrichments
+PUT    /api/ndc/{code}                      → update kurasi (status, notes, differentiator)
+DELETE /api/ndc/{code}                      → soft-delete
+POST   /api/ndc/merge                       → merge 2 NDC entries
+GET    /api/ndc/export                      → export CSV/Excel
+
+# ── Tab 1: Alarm Snapshot ──
+GET    /api/ndc/{code}/alarm-snapshot       → snapshot + co-occurring alarms
+
+# ── Tab 2: Symptoms ──
+GET    /api/ndc/{code}/symptoms             → all symptoms (primary/secondary/negative)
+POST   /api/ndc/{code}/symptoms             → add symptom (kurasi)
+PUT    /api/ndc/{code}/symptoms/{id}        → edit symptom
+DELETE /api/ndc/{code}/symptoms/{id}        → delete symptom
+
+# ── Tab 3: Diagnostic Tree ──
+GET    /api/ndc/{code}/diagnostic-tree      → all steps with branching
+PUT    /api/ndc/{code}/diagnostic-tree      → bulk update steps (kurasi)
+POST   /api/ndc/{code}/diagnostic-tree/step → add step
+DELETE /api/ndc/{code}/diagnostic-tree/{id} → delete step
+
+# ── Tab 4: SOP ──
+GET    /api/ndc/{code}/sop                  → paths + escalation + preventive
+PUT    /api/ndc/{code}/sop/paths/{id}       → edit path (name, notes)
+PUT    /api/ndc/{code}/sop/paths/{id}/steps → edit steps per path
+PUT    /api/ndc/{code}/sop/escalation       → bulk update escalation matrix
+POST   /api/ndc/{code}/sop/preventive       → add preventive action
+PUT    /api/ndc/{code}/sop/preventive/{id}  → edit preventive action
+DELETE /api/ndc/{code}/sop/preventive/{id}  → delete preventive action
+
+# ── Confusion Matrix ──
+GET    /api/ndc/confusion-matrix            → matrix INAP vs confirmed
+
+# ── NDC per Entity ──
+GET    /api/ndc/site/{site_id}              → NDC distribution per site
+GET    /api/ndc/entity/{level}/{id}         → NDC distribution per entity
+```
+
+---
+
+## 8. REACT COMPONENT STRUCTURE
+
+```
+frontend/src/pages/
+  └── NdcBrowserPage.jsx                    ← /ndc
+
+frontend/src/components/ndc/
+  ├── NdcTable.jsx                          ← sortable, expandable table
+  ├── NdcFilter.jsx                         ← category, priority, status, search
+  ├── NdcDetail.jsx                         ← container untuk 4 tab
+  │
+  ├── tabs/
+  │   ├── AlarmSnapshotTab.jsx              ← Tab 1
+  │   │   ├── TypicalProfile.jsx            ← tabel key-value profil
+  │   │   ├── TemporalSignature.jsx         ← peak hours, days, seasonal
+  │   │   ├── SiteSignature.jsx             ← class dist, 3T, region
+  │   │   └── CoOccurringAlarms.jsx         ← alarm bars + lag info
+  │   │
+  │   ├── SymptomsTab.jsx                   ← Tab 2
+  │   │   ├── SymptomList.jsx               ← primary/secondary + freq + confidence
+  │   │   ├── NegativeSymptoms.jsx          ← alert cards: apa yang TIDAK boleh ada
+  │   │   └── Differentiator.jsx            ← pembeda vs NDC sejenis
+  │   │
+  │   ├── DiagnosticTreeTab.jsx             ← Tab 3
+  │   │   └── DiagnosticStep.jsx            ← expandable step (YA/TIDAK branching)
+  │   │
+  │   └── SOPTab.jsx                        ← Tab 4
+  │       ├── ResolutionPaths.jsx           ← expandable cards + probability + SLA bar
+  │       ├── EscalationMatrix.jsx          ← tier table
+  │       └── PreventiveActions.jsx         ← action cards + effort level badge
+  │
+  ├── ConfusionMatrix.jsx                   ← heatmap INAP vs confirmed
+  ├── NdcDistribution.jsx                   ← horizontal bar chart (reusable)
+  ├── NdcSiteProfile.jsx                    ← per-site breakdown (for Profiler)
+  ├── NdcCurationForm.jsx                   ← edit symptoms, steps, notes per tab
+  └── NdcExport.jsx                         ← export CSV/Excel
+```
+
+---
+
+## 9. MENU & ROUTING
+
+```javascript
+// Sidebar (sisipkan setelah Profiler):
+//   Dashboard
+//   Profiler
+//   NDC Knowledge Base     ← NEW
+//   Report Card
+//   Saved Views
+//   Comparison
+//   Reports
+//   Upload
+//   Settings
+
+// Route:
+<Route path="/ndc" element={<NdcBrowserPage />} />
+```
+
+---
+
+## 10. AUTO-GENERATION VS KURASI — RINGKASAN
+
+```
+┌───────────────────────────────┬───────────┬──────────────────────────────────────┐
+│ Komponen                      │ Auto-gen  │ Catatan                              │
+├───────────────────────────────┼───────────┼──────────────────────────────────────┤
+│ NDC Discovery + KPI Stats     │ 100%      │ Aggregate per (rc_cat, rc_1, rc_2)   │
+│ Priority Score                │ 100%      │ volume × breach × severity × MTTR    │
+│ Confusion Matrix              │ 100%      │ inap_rc vs rc_engineer               │
+│ Site Distribution             │ 100%      │ Aggregate per site                   │
+│                               │           │                                      │
+│ Tab 1: Typical Profile        │ 100%      │ MODE() per field                     │
+│ Tab 1: Temporal Signature     │ 100%      │ Peak hour/day/seasonal dari calc_    │
+│ Tab 1: Site Signature         │ 100%      │ Join master_site, aggregate          │
+│ Tab 1: Co-occurring Alarms    │  90%      │ Temporal correlation ±4 jam          │
+│                               │           │                                      │
+│ Tab 2: Primary Symptoms       │  70%      │ Keyword matching summary/description │
+│ Tab 2: Secondary Symptoms     │  70%      │ Lower threshold                      │
+│ Tab 2: Negative Symptoms      │  30%      │ Auto dari confusion matrix crossref  │
+│ Tab 2: Differentiator         │   0%      │ Kurasi manual — konteks diperlukan   │
+│                               │           │                                      │
+│ Tab 3: Step Skeleton          │  40%      │ Dari MTTR quartile stages            │
+│ Tab 3: Branching (YA/TIDAK)   │  10%      │ Butuh domain knowledge               │
+│ Tab 3: Success Rate per Step  │  80%      │ Dari % resolved per MTTR stage       │
+│ Tab 3: Redirect ke NDC lain   │   0%      │ Kurasi manual                        │
+│                               │           │                                      │
+│ Tab 4: Resolution Paths       │  80%      │ Auto-cluster (auto/standard/esc)     │
+│ Tab 4: Steps per Path         │  60%      │ Dari resolution_action parsing       │
+│ Tab 4: Path Notes             │   0%      │ Kurasi manual                        │
+│ Tab 4: Escalation Matrix      │  20%      │ Template + data eskalasi             │
+│ Tab 4: Preventive Actions     │  10%      │ Suggest dari rule engine             │
+│                               │           │                                      │
+│ RATA-RATA                     │ ~60%      │ Bootstrap otomatis, enriched manual  │
+└───────────────────────────────┴───────────┴──────────────────────────────────────┘
+
+REKOMENDASI WORKFLOW KURASI:
+  1. Jalankan full_refresh() → auto-generate ~60% konten
+  2. NDC Browser → filter status "auto" → review per entry
+  3. Tab 1: Biasanya tidak perlu edit (100% auto, data-driven)
+  4. Tab 2: Review symptoms, tambah negative symptoms, tulis differentiator
+  5. Tab 3: Rewrite branching logic berdasarkan SOP operasional aktual
+  6. Tab 4: Review paths, tulis notes, isi escalation & preventive
+  7. Mark as "reviewed" → "validated"
+  8. Setelah upload data baru → full_refresh() (stats update, kurasi tetap)
+```
+
+---
+
+## 11. BATASAN
+
+```
+TIDAK BISA (SCOPE TERPISAH):
+  ❌ Real-time NDC suggestion saat tiket masuk (platform = batch-mode)
+  ❌ NLP-based symptom clustering (perlu model terlatih)
+  ❌ Otomatis menjadi Site DNA L1 Base (framework terpisah)
+  ❌ Feedback loop otomatis NDC → INAP rule correction
+  ❌ Image/attachment analysis dari description field
+```
+
+---
+
+## VALIDASI SETELAH SELESAI
+
+```
+CORE:
+  - [ ] Menu "NDC Knowledge Base" di sidebar, route /ndc
+  - [ ] NDC Discovery: auto-discover dari noc_tickets (MIN = 10 tiket)
+  - [ ] ndc_entries populated, NDC code format: NDC-{CAT}-{SEQ:04d}
+  - [ ] Priority score calculated (volume × breach × severity × MTTR)
+  - [ ] NDC Browser: filter, sort, expand, search, paginate
+  - [ ] Confusion Matrix: heatmap + overall accuracy + insight
+
+TAB 1 — ALARM SNAPSHOT:
+  - [ ] ndc_alarm_snapshot populated per NDC
+  - [ ] Typical profile: severity, NE class, fault level, impact, type, RAT
+  - [ ] Temporal signature: peak hours range, peak days, seasonal
+  - [ ] Site signature: class distribution, 3T%, kriteria%, top regions
+  - [ ] ndc_co_occurring_alarms: top 5 alarms + lag + direction
+  - [ ] UI: 4 cards (profile, temporal, site, co-alarms)
+
+TAB 2 — SYMPTOMS:
+  - [ ] ndc_symptoms populated (auto-extracted)
+  - [ ] Primary symptoms (freq >= 30%) + confidence + source
+  - [ ] Secondary symptoms (5-30%)
+  - [ ] Negative symptoms (auto dari confusion matrix + manual)
+  - [ ] ndc_entries.differentiator field (kurasi manual)
+  - [ ] Kurasi UI: add / edit / delete symptoms
+
+TAB 3 — DIAGNOSTIC TREE:
+  - [ ] ndc_diagnostic_steps populated (skeleton)
+  - [ ] Steps: action, expected_result, if_yes, if_no
+  - [ ] success_rate_at_step + cumulative_resolve_pct
+  - [ ] if_no_redirect_ndc (link ke NDC lain)
+  - [ ] Expandable step UI dengan YA/TIDAK branching
+  - [ ] Kurasi UI: edit steps, add/delete, reorder
+  - [ ] TIDAK overwrite jika sudah reviewed=TRUE
+
+TAB 4 — SOP PENANGANAN:
+  - [ ] ndc_resolution_paths populated (auto-clustered)
+  - [ ] Per path: probability%, avg_mttr, sla_met%, ticket_count
+  - [ ] ndc_resolution_steps per path
+  - [ ] Expandable cards + SLA progress bar
+  - [ ] ndc_escalation_matrix: tier 1-4 template + data aktual
+  - [ ] ndc_preventive_actions: editable, effort level badge
+  - [ ] Kurasi UI: edit path name/notes, edit steps, add preventive
+
+INTEGRASI:
+  - [ ] Profiler (Prompt 8): NDC distribution bar di panel gangguan
+  - [ ] Report Card: Top 3 NDC section per entity
+  - [ ] Rekomendasi: R21 (concentration), R22 (misclass), R23 (preventive)
+  - [ ] Laporan bulanan: Top NDC section
+  - [ ] NDC per site: distribution + comparison vs nasional
+  - [ ] Export CSV/Excel semua NDC + enrichments
+  - [ ] Refresh otomatis setelah upload data baru
+  - [ ] API: semua 25+ endpoints bekerja
+  - [ ] Footer: "Dr. Adam M."
+```
