@@ -79,22 +79,33 @@ app.include_router(ndc.router, prefix="/api")
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
+def _run_startup_tasks():
+    import threading
+    def _init():
+        try:
+            init_database()
+            from backend.services.schema_service import initialize_schema, get_schema_status
+            from backend.services.schema_service import _migrate_saved_views
+            from backend.database import get_write_connection
+            with get_write_connection() as wconn:
+                _migrate_saved_views(wconn)
+            status = get_schema_status()
+            if not status["initialized"]:
+                result = initialize_schema()
+                logger.info(f"Schema initialized: {len(result['tables_created'])} tables created")
+            else:
+                logger.info("Schema already initialized")
+                from backend.services.calendar_service import seed_calendar_if_empty
+                seed_calendar_if_empty()
+        except Exception as e:
+            logger.error(f"Startup task error: {e}")
+    t = threading.Thread(target=_init, daemon=True)
+    t.start()
+
+
 @app.on_event("startup")
 async def startup():
-    init_database()
-    from backend.services.schema_service import initialize_schema, get_schema_status
-    from backend.services.schema_service import _migrate_saved_views
-    from backend.database import get_write_connection
-    with get_write_connection() as wconn:
-        _migrate_saved_views(wconn)
-    status = get_schema_status()
-    if not status["initialized"]:
-        result = initialize_schema()
-        logger.info(f"Schema initialized: {len(result['tables_created'])} tables created")
-    else:
-        logger.info("Schema already initialized")
-        from backend.services.calendar_service import seed_calendar_if_empty
-        seed_calendar_if_empty()
+    _run_startup_tasks()
 
 
 if FRONTEND_DIST.is_dir():
