@@ -1,7 +1,7 @@
 import socket
 import os
 import sys
-import threading
+import signal
 import time
 
 PORT = int(os.environ.get("PORT", "5000"))
@@ -19,19 +19,19 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(("0.0.0.0", PORT))
 sock.listen(128)
-sock.setblocking(True)
 os.set_inheritable(sock.fileno(), True)
 
-print(f"[start.py] Socket listening on :{PORT}", flush=True)
+sys.stdout.write(f"[start.py] Socket bound to :{PORT}\n")
+sys.stdout.flush()
 
-_stop_health = False
+child_pid = os.fork()
 
-
-def _health_accept():
-    sock.settimeout(0.5)
-    while not _stop_health:
+if child_pid == 0:
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+    while True:
         try:
-            conn, addr = sock.accept()
+            conn, _ = sock.accept()
             try:
                 conn.settimeout(3)
                 conn.recv(4096)
@@ -39,25 +39,31 @@ def _health_accept():
             except Exception:
                 pass
             finally:
-                conn.close()
-        except socket.timeout:
-            continue
-        except OSError:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        except Exception:
             break
+    os._exit(0)
 
-
-health_thread = threading.Thread(target=_health_accept, daemon=True)
-health_thread.start()
-print("[start.py] Health responder active", flush=True)
+sys.stdout.write(f"[start.py] Health child pid={child_pid}\n")
+sys.stdout.flush()
 
 import importlib
 uvicorn = importlib.import_module("uvicorn")
 from backend.main import app as application
 
-_stop_health = True
-health_thread.join(timeout=2)
+sys.stdout.write("[start.py] Imports done, stopping health child\n")
+sys.stdout.flush()
 
-print("[start.py] Starting uvicorn on pre-bound socket", flush=True)
+os.kill(child_pid, signal.SIGTERM)
+try:
+    os.waitpid(child_pid, 0)
+except ChildProcessError:
+    pass
+
+time.sleep(0.2)
 
 config = uvicorn.Config(
     app=application,
@@ -66,4 +72,11 @@ config = uvicorn.Config(
     fd=sock.fileno(),
 )
 server = uvicorn.Server(config)
+
+def _fwd(signum, frame):
+    server.should_exit = True
+
+signal.signal(signal.SIGTERM, _fwd)
+signal.signal(signal.SIGINT, _fwd)
+
 server.run()
