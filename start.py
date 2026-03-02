@@ -21,33 +21,54 @@ sock.bind(("0.0.0.0", PORT))
 sock.listen(128)
 os.set_inheritable(sock.fileno(), True)
 
-sys.stdout.write(f"[start.py] Socket bound to :{PORT}\n")
+sys.stdout.write(f"[start.py] Socket bound on :{PORT}\n")
 sys.stdout.flush()
 
 child_pid = os.fork()
 
 if child_pid == 0:
-    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
-    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+    sys.stdout.write("[health-child] Starting accept loop\n")
+    sys.stdout.flush()
+
+    def _exit_handler(*_):
+        sys.stdout.write("[health-child] Received SIGTERM, exiting\n")
+        sys.stdout.flush()
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _exit_handler)
+    signal.signal(signal.SIGINT, _exit_handler)
+
+    count = 0
     while True:
         try:
-            conn, _ = sock.accept()
+            conn, addr = sock.accept()
+            count += 1
+            sys.stdout.write(f"[health-child] Connection #{count} from {addr}\n")
+            sys.stdout.flush()
             try:
                 conn.settimeout(3)
-                conn.recv(4096)
+                data = conn.recv(4096)
                 conn.sendall(HTTP_200)
-            except Exception:
-                pass
+                sys.stdout.write(f"[health-child] Responded 200 OK to #{count}\n")
+                sys.stdout.flush()
+            except Exception as e:
+                sys.stdout.write(f"[health-child] Error handling #{count}: {e}\n")
+                sys.stdout.flush()
             finally:
                 try:
                     conn.close()
                 except Exception:
                     pass
-        except Exception:
+        except Exception as e:
+            sys.stdout.write(f"[health-child] Accept error: {e}\n")
+            sys.stdout.flush()
             break
+
+    sys.stdout.write("[health-child] Loop ended\n")
+    sys.stdout.flush()
     os._exit(0)
 
-sys.stdout.write(f"[start.py] Health child pid={child_pid}\n")
+sys.stdout.write(f"[start.py] Health child pid={child_pid}, importing...\n")
 sys.stdout.flush()
 
 import importlib
@@ -64,6 +85,9 @@ except ChildProcessError:
     pass
 
 time.sleep(0.2)
+
+sys.stdout.write("[start.py] Starting uvicorn server\n")
+sys.stdout.flush()
 
 config = uvicorn.Config(
     app=application,
