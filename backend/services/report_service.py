@@ -18,7 +18,8 @@ from backend.services.recommendation_service import RecommendationEngine
 
 logger = logging.getLogger(__name__)
 
-REPORT_DIR = Path("data/reports")
+from backend.config import DATA_DIR
+REPORT_DIR = Path(DATA_DIR) / "reports"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "reports"

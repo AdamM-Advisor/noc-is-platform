@@ -1,10 +1,18 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+
+IS_PRODUCTION = os.environ.get("REPL_DEPLOYMENT") == "1" or os.environ.get("REPLIT_DEPLOYMENT") == "1"
+
+if IS_PRODUCTION:
+    DATA_DIR = "/tmp/noc_data"
+    UPLOAD_DIR = "/tmp/noc_uploads"
+else:
+    DATA_DIR = os.path.join(BASE_DIR, ".data")
+    UPLOAD_DIR = os.path.join(BASE_DIR, ".uploads")
+
 DB_PATH = os.path.join(DATA_DIR, "noc_analytics.duckdb")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 CHUNK_DIR = os.path.join(BASE_DIR, "temp_chunks")
 EXPORT_DIR = os.path.join(BASE_DIR, "exports")
 
