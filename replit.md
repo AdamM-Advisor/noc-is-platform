@@ -54,6 +54,6 @@ The platform employs a client-server architecture, featuring a Python/FastAPI ba
 
 ## External Dependencies
 
-- **Python Libraries**: `fastapi`, `uvicorn`, `duckdb`, `python-multipart`, `aiofiles`, `psutil`, `pandas`, `pyarrow`, `openpyxl`, `weasyprint`, `matplotlib`, `jinja2`.
+- **Python Libraries**: `fastapi`, `uvicorn`, `duckdb`, `python-multipart`, `aiofiles`, `psutil`, `pandas`, `openpyxl`, `jinja2`.
 - **Frontend Libraries**: `react`, `react-dom`, `react-router-dom`, `axios`, `zustand`, `recharts`, `lucide-react`, `vite`, `tailwindcss`.
 - **External Data Sources**: BMKG (weather data), PLN (power outage data).
