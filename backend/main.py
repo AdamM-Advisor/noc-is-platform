@@ -7,7 +7,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,26 +51,20 @@ def _ensure_db():
         _db_initialized = True
 
 
+def _delayed_db_init():
+    time.sleep(10)
+    _ensure_db()
+
+
 @asynccontextmanager
 async def lifespan(a):
-    threading.Thread(target=_ensure_db, daemon=True).start()
+    logger.info("Lifespan startup")
+    threading.Thread(target=_delayed_db_init, daemon=True).start()
     yield
 
 
 app = FastAPI(title="NOC-IS Analytics Platform", version="1.0.0", lifespan=lifespan)
 app.state.start_time = time.time()
-
-
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        if path.startswith("/api/") and path not in AUTH_EXEMPT_PATHS:
-            from backend.services.auth_service import validate_session
-            token = request.cookies.get("nocis_session")
-            if not token or not validate_session(token):
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-        return await call_next(request)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,7 +73,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(AuthMiddleware)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and path not in AUTH_EXEMPT_PATHS:
+        from backend.services.auth_service import validate_session
+        token = request.cookies.get("nocis_session")
+        if not token or not validate_session(token):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 @app.get("/")

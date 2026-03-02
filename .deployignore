@@ -1,9 +1,11 @@
 *.pyc
+*.pyo
 *.log
 *.md
 *.parquet
 *.duckdb
 *.duckdb.wal
+*.sh
 __pycache__/
 .git/
 .local/
@@ -12,6 +14,8 @@ __pycache__/
 .upm/
 .data/
 .uploads/
+.agents/
+.pythonlibs/
 data/
 uploads/
 temp_chunks/
@@ -24,11 +28,11 @@ frontend/index.html
 frontend/vite.config.js
 frontend/package.json
 frontend/package-lock.json
+frontend/tailwind.config.js
 package.json
 package-lock.json
 uv.lock
-build.sh
 main.py
 .gitignore
 .dockerignore
-.agents/
+.deployignore
