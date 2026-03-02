@@ -1,34 +1,23 @@
-import os
 import time
 import logging
 import threading
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from backend.routers import health, upload, admin
-from backend.routers import schema, threshold
-from backend.routers import imports, orphans, data
-from backend.routers import hierarchy, site, sla_target, data_quality, external
-from backend.routers import profiler
-from backend.routers import gangguan
-from backend.routers import predictive
-from backend.routers import dashboard, report_card
-from backend.routers import saved_views, comparison
-from backend.routers import reports
-from backend.routers import ndc
-from backend.routers import auth
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NOC-IS Analytics Platform", version="1.0.0")
-
 app.state.start_time = time.time()
 app.state.ready = False
+app.state.routers_registered = False
 
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+AUTH_EXEMPT_PREFIXES = ("/healthz", "/assets/", "/favicon")
 AUTH_EXEMPT_PATHS = {
     "/", "/healthz", "/api/auth/login", "/api/auth/verify-2fa",
     "/api/auth/me", "/api/auth/logout", "/api/health",
@@ -55,8 +44,6 @@ app.add_middleware(
 )
 app.add_middleware(AuthMiddleware)
 
-FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-
 
 @app.get("/healthz")
 async def healthz():
@@ -68,46 +55,60 @@ async def root():
     index = FRONTEND_DIST / "index.html"
     if index.is_file():
         return FileResponse(str(index))
-    return PlainTextResponse("NOC-IS Analytics Platform")
+    return PlainTextResponse("ok")
 
 
-app.include_router(auth.router, prefix="/api")
-app.include_router(health.router, prefix="/api")
-app.include_router(upload.router, prefix="/api")
-app.include_router(admin.router, prefix="/api")
-app.include_router(schema.router, prefix="/api")
-app.include_router(threshold.router, prefix="/api")
-app.include_router(imports.router, prefix="/api")
-app.include_router(orphans.router, prefix="/api")
-app.include_router(data.router, prefix="/api")
-app.include_router(hierarchy.router, prefix="/api")
-app.include_router(site.router, prefix="/api")
-app.include_router(sla_target.router, prefix="/api")
-app.include_router(data_quality.router, prefix="/api")
-app.include_router(external.router, prefix="/api")
-app.include_router(profiler.router, prefix="/api")
-app.include_router(gangguan.router, prefix="/api")
-app.include_router(predictive.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
-app.include_router(report_card.router, prefix="/api")
-app.include_router(saved_views.router, prefix="/api")
-app.include_router(comparison.router, prefix="/api")
-app.include_router(reports.router, prefix="/api")
-app.include_router(ndc.router, prefix="/api")
-
-if FRONTEND_DIST.is_dir():
-    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static-assets")
-
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        file_path = FRONTEND_DIST / full_path
-        if full_path and file_path.is_file():
-            return FileResponse(str(file_path))
-        return FileResponse(str(FRONTEND_DIST / "index.html"))
-
-
-def _init_db_and_schema():
+def _register_routers_sync():
+    if app.state.routers_registered:
+        return
     try:
+        from backend.routers import health, upload, admin
+        from backend.routers import schema, threshold
+        from backend.routers import imports, orphans, data
+        from backend.routers import hierarchy, site, sla_target, data_quality, external
+        from backend.routers import profiler, gangguan, predictive
+        from backend.routers import dashboard, report_card
+        from backend.routers import saved_views, comparison
+        from backend.routers import reports, ndc, auth
+
+        app.include_router(auth.router, prefix="/api")
+        app.include_router(health.router, prefix="/api")
+        app.include_router(upload.router, prefix="/api")
+        app.include_router(admin.router, prefix="/api")
+        app.include_router(schema.router, prefix="/api")
+        app.include_router(threshold.router, prefix="/api")
+        app.include_router(imports.router, prefix="/api")
+        app.include_router(orphans.router, prefix="/api")
+        app.include_router(data.router, prefix="/api")
+        app.include_router(hierarchy.router, prefix="/api")
+        app.include_router(site.router, prefix="/api")
+        app.include_router(sla_target.router, prefix="/api")
+        app.include_router(data_quality.router, prefix="/api")
+        app.include_router(external.router, prefix="/api")
+        app.include_router(profiler.router, prefix="/api")
+        app.include_router(gangguan.router, prefix="/api")
+        app.include_router(predictive.router, prefix="/api")
+        app.include_router(dashboard.router, prefix="/api")
+        app.include_router(report_card.router, prefix="/api")
+        app.include_router(saved_views.router, prefix="/api")
+        app.include_router(comparison.router, prefix="/api")
+        app.include_router(reports.router, prefix="/api")
+        app.include_router(ndc.router, prefix="/api")
+
+        from fastapi.staticfiles import StaticFiles
+        if FRONTEND_DIST.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static-assets")
+
+        app.state.routers_registered = True
+        logger.info("Routers registered")
+    except Exception as e:
+        logger.error(f"Router registration error: {e}")
+
+
+def _init_background():
+    try:
+        _register_routers_sync()
+
         from backend.database import init_database
         init_database()
         from backend.services.schema_service import initialize_schema, get_schema_status
@@ -126,11 +127,11 @@ def _init_db_and_schema():
         app.state.ready = True
         logger.info("Startup tasks completed")
     except Exception as e:
-        logger.error(f"Startup task error: {e}")
+        logger.error(f"Startup error: {e}")
         app.state.ready = True
 
 
 @app.on_event("startup")
 async def startup():
-    t = threading.Thread(target=_init_db_and_schema, daemon=True)
+    t = threading.Thread(target=_init_background, daemon=True)
     t.start()
