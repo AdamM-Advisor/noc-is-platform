@@ -7,6 +7,8 @@ frontend/node_modules
 frontend/src
 frontend/index.html
 frontend/vite.config.js
+frontend/package.json
+frontend/package-lock.json
 node_modules
 __pycache__
 .git
@@ -14,5 +16,12 @@ __pycache__
 .cache
 .config
 .upm
+.pythonlibs/share
+.pythonlibs/bin/pip*
+.pythonlibs/bin/activate*
+.pythonlibs/bin/Activate*
+.pythonlibs/lib/python3.11/site-packages/*.dist-info
+package.json
+package-lock.json
 *.pyc
 *.log
