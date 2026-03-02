@@ -16,12 +16,12 @@ __pycache__
 .cache
 .config
 .upm
-.pythonlibs/share
-.pythonlibs/bin/pip*
-.pythonlibs/bin/activate*
-.pythonlibs/bin/Activate*
-.pythonlibs/lib/python3.11/site-packages/*.dist-info
+.pythonlibs
 package.json
 package-lock.json
+uv.lock
+build.sh
+replit.md
 *.pyc
 *.log
+*.md
