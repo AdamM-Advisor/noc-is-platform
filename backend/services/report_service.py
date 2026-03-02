@@ -516,8 +516,12 @@ class ReportGenerator:
         return template.render(**data)
 
     def _html_to_pdf(self, html):
-        from weasyprint import HTML
-        return HTML(string=html).write_pdf()
+        try:
+            from weasyprint import HTML
+            return HTML(string=html).write_pdf()
+        except ImportError:
+            logger.warning("weasyprint not available - PDF generation disabled")
+            raise RuntimeError("PDF generation is not available (weasyprint not installed)")
 
     def _generate_excel(self, report_type, data):
         if report_type == 'monthly':

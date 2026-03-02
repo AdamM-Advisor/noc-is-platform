@@ -16,19 +16,34 @@ _mticker = None
 def _get_plt():
     global _plt, _mticker
     if _plt is None:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        import matplotlib.ticker as mticker
-        _plt = plt
-        _mticker = mticker
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            import matplotlib.ticker as mticker
+            _plt = plt
+            _mticker = mticker
+        except ImportError:
+            logger.warning("matplotlib not available - chart rendering disabled")
+            return None
     return _plt
+
+
+_NO_CHART = "data:image/png;base64,"
 
 
 class ChartRenderer:
 
-    def render_trend_line(self, data, title, target=None, ylabel=''):
+    def _check_plt(self):
         plt = _get_plt()
+        if plt is None:
+            return None
+        return plt
+
+    def render_trend_line(self, data, title, target=None, ylabel=''):
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         fig, ax = plt.subplots(figsize=(8, 3))
         periods = [d.get('period', '') for d in data]
         values = [d.get('value', 0) for d in data]
@@ -46,7 +61,9 @@ class ChartRenderer:
         return self._fig_to_base64(fig)
 
     def render_multi_trend(self, datasets, title, labels=None):
-        plt = _get_plt()
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         fig, ax = plt.subplots(figsize=(8, 3.5))
         colors = [BLUE, RED, GREEN, YELLOW, GRAY]
         for i, ds in enumerate(datasets):
@@ -63,7 +80,9 @@ class ChartRenderer:
         return self._fig_to_base64(fig)
 
     def render_bar_chart(self, labels, values, title, color=None):
-        plt = _get_plt()
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         fig, ax = plt.subplots(figsize=(8, 3.5))
         bars = ax.bar(labels, values, color=color or BLUE, alpha=0.85)
         ax.set_title(title, fontsize=11, fontweight='bold')
@@ -76,7 +95,9 @@ class ChartRenderer:
         return self._fig_to_base64(fig)
 
     def render_heatmap(self, cells, y_labels, x_labels, title):
-        plt = _get_plt()
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         fig, ax = plt.subplots(figsize=(10, max(3, len(y_labels) * 0.5 + 1)))
         if not cells or not cells[0]:
             ax.text(0.5, 0.5, 'Tidak ada data', ha='center', va='center', fontsize=12)
@@ -94,7 +115,9 @@ class ChartRenderer:
         return self._fig_to_base64(fig)
 
     def render_pareto(self, labels, values, title):
-        plt = _get_plt()
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         if not labels or not values:
             return self._empty_chart(title)
         sorted_data = sorted(zip(labels, values), key=lambda x: -x[1])
@@ -116,7 +139,9 @@ class ChartRenderer:
         return self._fig_to_base64(fig)
 
     def render_radar(self, labels, values, title):
-        plt = _get_plt()
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         import numpy as np
         n = len(labels)
         if n < 3:
@@ -134,7 +159,9 @@ class ChartRenderer:
         return self._fig_to_base64(fig)
 
     def _empty_chart(self, title):
-        plt = _get_plt()
+        plt = self._check_plt()
+        if plt is None:
+            return _NO_CHART
         fig, ax = plt.subplots(figsize=(6, 3))
         ax.text(0.5, 0.5, 'Data tidak tersedia', ha='center', va='center',
                 fontsize=12, color=GRAY)
