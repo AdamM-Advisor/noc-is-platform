@@ -5,6 +5,7 @@
 *.parquet
 *.duckdb
 *.duckdb.wal
+*.duckdb.tmp
 *.sh
 __pycache__/
 .git/

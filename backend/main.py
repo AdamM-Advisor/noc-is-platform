@@ -155,21 +155,44 @@ def _boot():
 
         logger.info("Routers registered")
 
-        from backend.database import init_database
+        from backend.database import init_database, get_write_connection
+        from backend.services.schema_service import initialize_schema, get_schema_status, _migrate_saved_views
+        from backend.services.backup_service import create_backup, list_backups, restore_backup
+        from backend.services.calendar_service import seed_calendar_if_empty
+        from backend.config import BACKUP_DIR
+        import os
+
         init_database()
-        from backend.services.schema_service import initialize_schema, get_schema_status
-        from backend.services.schema_service import _migrate_saved_views
-        from backend.database import get_write_connection
+
+        backups = list_backups()
+        status = get_schema_status()
+
+        if not status["initialized"] and backups:
+            latest = backups[0]["name"]
+            logger.info(f"Database empty, restoring from backup: {latest}")
+            restore_backup(latest)
+            status = get_schema_status()
+            logger.info(f"Restore complete, schema initialized: {status['initialized']}")
+
         with get_write_connection() as wconn:
             _migrate_saved_views(wconn)
+
         status = get_schema_status()
         if not status["initialized"]:
             result = initialize_schema()
             logger.info(f"Schema init: {len(result['tables_created'])} tables")
         else:
             logger.info("Schema already initialized")
-            from backend.services.calendar_service import seed_calendar_if_empty
             seed_calendar_if_empty()
+
+        try:
+            backup_result = create_backup()
+            if backup_result.get("backup_path"):
+                logger.info(f"Auto-backup created: {backup_result['backup_path']} ({backup_result['size_mb']} MB)")
+            else:
+                logger.info(f"Auto-backup skipped: {backup_result.get('message', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"Auto-backup failed: {e}")
 
         _full_app = full
         logger.info("Full app ready")

@@ -49,7 +49,8 @@ The platform employs a client-server architecture, featuring a Python/FastAPI ba
 - **Schema Auto-Initialization**: Prepares the database on application startup.
 - **Configurable Thresholds**: Allows dynamic adjustment of analytical parameters.
 - **Priority-based SLA Resolution**: Determines SLA targets based on a defined hierarchy.
-- **Production Deployment**: FastAPI serves both the API and the built Vite frontend from a single process.
+- **Production Deployment**: FastAPI serves both the API and the built Vite frontend from a single process. Uses a two-stage ASGI startup: a raw ASGI handler responds to health checks instantly (0.15s import), while the full FastAPI app + all routers load in a background thread (~8-10s). No build step in deployment config.
+- **DuckDB Persistence**: Production stores data in `~/noc_data/` (persistent across VM restarts). Dev uses `.data/`. Auto-restore on startup: if database is empty but backups exist, restores from latest backup automatically. Auto-backup runs after every startup to maintain baseline.
 - **Email Integration**: Uses Replit's built-in mail service for 2FA emails (no external provider like SendGrid needed). The Replit mail service sends to the user's verified Replit email and also supports sending to specific addresses via the connectors API.
 
 ## External Dependencies

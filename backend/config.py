@@ -5,8 +5,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IS_PRODUCTION = os.environ.get("REPL_DEPLOYMENT") == "1" or os.environ.get("REPLIT_DEPLOYMENT") == "1"
 
 if IS_PRODUCTION:
-    DATA_DIR = "/tmp/noc_data"
-    UPLOAD_DIR = "/tmp/noc_uploads"
+    DATA_DIR = os.path.join(os.path.expanduser("~"), "noc_data")
+    UPLOAD_DIR = os.path.join(os.path.expanduser("~"), "noc_uploads")
 else:
     DATA_DIR = os.path.join(BASE_DIR, ".data")
     UPLOAD_DIR = os.path.join(BASE_DIR, ".uploads")
