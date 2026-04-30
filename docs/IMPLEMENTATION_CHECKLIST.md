@@ -22,7 +22,7 @@
 - [x] Implement incremental monthly summary refresh by affected partition.
 - [x] Smoke test monthly summary writer with local Parquet and temporary catalog.
 - [ ] Verify monthly summary refresh against Google Cloud Storage from Cloud Run Jobs.
-- [ ] Add benchmark with realistic Parquet volume.
+- [x] Add benchmark with realistic Parquet volume.
 
 ## 2. Predictive Failure Foundation
 

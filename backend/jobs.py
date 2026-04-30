@@ -28,6 +28,7 @@ from backend.services.summary_lake_service import (
     monthly_summary_partition_uri,
     monthly_summary_writer_sql,
 )
+from backend.services.benchmark_service import LocalBenchmarkConfig, run_local_benchmark
 
 
 def ensure_lake(_args):
@@ -251,6 +252,23 @@ def predictive_smoke(_args):
     }
 
 
+def benchmark_local(args):
+    return run_local_benchmark(
+        LocalBenchmarkConfig(
+            output_dir=args.output_dir,
+            total_rows=args.rows,
+            months=args.months,
+            source=args.source,
+            start_year=args.start_year,
+            start_month=args.start_month,
+            site_count=args.site_count,
+            run_predictive=not args.skip_predictive,
+            run_backtest=not args.skip_backtest,
+            persist_model_runs=args.persist_model_runs,
+        )
+    )
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="NOC-IS Cloud Run job commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -386,6 +404,19 @@ def build_parser():
 
     smoke = sub.add_parser("predictive-smoke", help="Run a lightweight predictive scoring smoke test")
     smoke.set_defaults(func=predictive_smoke)
+
+    benchmark = sub.add_parser("benchmark-local", help="Generate synthetic Parquet and benchmark the local pipeline")
+    benchmark.add_argument("--rows", type=int, default=100_000, help="Total synthetic ticket rows")
+    benchmark.add_argument("--months", type=int, default=3, help="Number of monthly partitions")
+    benchmark.add_argument("--source", default="swfm_realtime")
+    benchmark.add_argument("--start-year", type=int, default=2026)
+    benchmark.add_argument("--start-month", type=int, default=1)
+    benchmark.add_argument("--site-count", type=int, default=1_000)
+    benchmark.add_argument("--output-dir", default=None)
+    benchmark.add_argument("--skip-predictive", action="store_true")
+    benchmark.add_argument("--skip-backtest", action="store_true")
+    benchmark.add_argument("--persist-model-runs", action="store_true")
+    benchmark.set_defaults(func=benchmark_local)
 
     return parser
 

@@ -1,5 +1,5 @@
-import shutil
 import unittest
+import uuid
 from pathlib import Path
 
 from backend.tests.golden_fixtures import (
@@ -11,9 +11,7 @@ from backend.tests.golden_fixtures import (
 
 class GoldenFixturePipelineTest(unittest.TestCase):
     def setUp(self):
-        self.workspace = Path.cwd() / ".test_tmp" / "golden_fixture_pipeline"
-        if self.workspace.exists():
-            shutil.rmtree(self.workspace)
+        self.workspace = Path.cwd() / ".test_tmp" / "golden_fixture_pipeline" / uuid.uuid4().hex
         self.workspace.mkdir(parents=True)
         self._configure_local_runtime(self.workspace)
 
