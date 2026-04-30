@@ -1,0 +1,16 @@
+.git
+.gitignore
+.data
+.uploads
+.parquet_lake
+temp_chunks
+exports
+frontend/node_modules
+frontend/dist
+node_modules
+__pycache__
+*.pyc
+*.pyo
+*.duckdb
+*.duckdb.wal
+*.parquet

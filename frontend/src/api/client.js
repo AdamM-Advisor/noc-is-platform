@@ -1,13 +1,16 @@
 import axios from 'axios';
+import { API_BASE_URL } from './axiosConfig';
 
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 60000,
+  withCredentials: true,
 });
 
 const uploadClient = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 300000,
+  withCredentials: true,
 });
 
 const showToast = (message) => {

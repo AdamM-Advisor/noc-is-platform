@@ -4,3 +4,10 @@ duckdb
 python-multipart
 aiofiles
 psutil
+pandas
+pyarrow
+openpyxl
+jinja2
+matplotlib
+weasyprint
+google-cloud-storage

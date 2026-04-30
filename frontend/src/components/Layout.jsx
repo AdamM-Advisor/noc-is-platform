@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart, BookOpen, LogOut, Database, CloudSun } from 'lucide-react';
+import { LayoutDashboard, Upload, Settings, Menu, X, Info, Search, FileText, Bookmark, GitCompare, FileBarChart, BookOpen, LogOut, Database, CloudSun, ServerCog } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 
 const navItems = [
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/upload', icon: Upload, label: 'Upload' },
   { to: '/master-data', icon: Database, label: 'Master Data' },
   { to: '/external-data', icon: CloudSun, label: 'Data Eksternal' },
+  { to: '/operations', icon: ServerCog, label: 'Operations' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

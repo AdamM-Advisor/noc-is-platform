@@ -15,6 +15,7 @@ const SavedViewsPage = lazy(() => import('./pages/SavedViewsPage'));
 const ComparisonPage = lazy(() => import('./pages/ComparisonPage'));
 const ReportGeneratorPage = lazy(() => import('./pages/ReportGeneratorPage'));
 const NdcBrowserPage = lazy(() => import('./pages/NdcBrowserPage'));
+const OperationsPage = lazy(() => import('./pages/OperationsPage'));
 
 function PageLoader() {
   return (
@@ -65,6 +66,7 @@ function App() {
             <Route path="upload" element={<UploadPage />} />
             <Route path="master-data" element={<MasterDataPage />} />
             <Route path="external-data" element={<ExternalDataPage />} />
+            <Route path="operations" element={<OperationsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

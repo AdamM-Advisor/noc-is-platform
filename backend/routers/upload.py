@@ -1,5 +1,4 @@
 import os
-import uuid
 import threading
 import logging
 import pandas as pd
@@ -7,7 +6,13 @@ from fastapi import APIRouter, UploadFile, File, Header, HTTPException, Request
 from backend.config import SINGLE_UPLOAD_LIMIT_MB, CHUNK_SIZE_MB, UPLOAD_DIR
 from backend.services.upload_service import save_upload, save_chunk, assemble_chunks, get_chunk_status
 from backend.services.file_detector import detect_file_type
-from backend.services.header_normalizer import normalize_headers
+from backend.services.job_status_adapter import (
+    LEGACY_UPLOAD_JOB_TYPE,
+    has_active_operational_job,
+    legacy_upload_job_status,
+    progress_result,
+)
+from backend.services.operational_catalog_service import create_job, get_job, update_job
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +20,6 @@ router = APIRouter(prefix="/upload")
 
 ALLOWED_EXTENSIONS = {".xlsx", ".csv", ".parquet"}
 
-_processing_jobs = {}
 _processing_lock = threading.Lock()
 
 
@@ -132,23 +136,26 @@ async def process_upload(data: dict):
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
 
     with _processing_lock:
-        active = [j for j in _processing_jobs.values() if j["status"] == "processing"]
-        if active:
+        if has_active_operational_job(LEGACY_UPLOAD_JOB_TYPE):
             raise HTTPException(
                 status_code=409,
                 detail="Sedang memproses upload lain. Mohon tunggu...",
             )
 
-        job_id = str(uuid.uuid4())[:8]
-
-        _processing_jobs[job_id] = {
-            "status": "processing",
-            "filename": filename,
-            "file_type": None,
-            "progress": {"phase": "reading", "detail": "Memulai...", "row": 0, "total": 0},
-            "result": None,
-            "error": None,
-        }
+        job = create_job(
+            LEGACY_UPLOAD_JOB_TYPE,
+            payload={"filename": filename, "file_type": file_type_override},
+            source=file_type_override if file_type_override != "auto" else None,
+        )
+        job_id = job["job_id"]
+        update_job(
+            job_id,
+            status="running",
+            result=progress_result("Memulai..."),
+            progress_phase="reading",
+            progress_current=0,
+            progress_total=0,
+        )
 
     thread = threading.Thread(
         target=_run_processing,
@@ -162,22 +169,29 @@ async def process_upload(data: dict):
 
 @router.get("/process/status/{job_id}")
 async def process_status(job_id: str):
-    job = _processing_jobs.get(job_id)
-    if not job:
+    try:
+        job = get_job(job_id)
+    except KeyError:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    if job.get("job_type") != LEGACY_UPLOAD_JOB_TYPE:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return legacy_upload_job_status(job)
 
 
 def _run_processing(job_id, file_path, filename, file_type_override):
+    file_type = None
+    progress_metadata = {}
+
     try:
         def update_progress(phase, detail="", row=0, total=0):
-            if job_id in _processing_jobs:
-                _processing_jobs[job_id]["progress"] = {
-                    "phase": phase,
-                    "detail": detail,
-                    "row": row,
-                    "total": total,
-                }
+            update_job(
+                job_id,
+                status="running",
+                result=progress_result(detail, **progress_metadata),
+                progress_phase=phase,
+                progress_current=row,
+                progress_total=total,
+            )
 
         update_progress("reading", "Membaca file...")
 
@@ -195,8 +209,7 @@ def _run_processing(job_id, file_path, filename, file_type_override):
         headers = list(df.columns)
         detection = detect_file_type(filename, headers)
         file_type = file_type_override if file_type_override != "auto" else detection["file_type"]
-
-        _processing_jobs[job_id]["file_type"] = file_type
+        progress_metadata["detected_file_type"] = file_type
 
         if file_type == "unknown":
             raise ValueError("Tidak dapat mendeteksi tipe file. Silakan pilih tipe secara manual.")
@@ -210,16 +223,26 @@ def _run_processing(job_id, file_path, filename, file_type_override):
             detected_header_format = detection.get("header_format", None)
             result = process_ticket_file(file_path, file_type, progress_callback=update_progress, header_format=detected_header_format)
 
-        _processing_jobs[job_id]["status"] = "completed"
-        _processing_jobs[job_id]["result"] = result
-        update_progress("completed", "Selesai", result.get("total", 0), result.get("total", 0))
+        result = {**result, "file_type": file_type}
+        total = int(result.get("total") or result.get("total_tickets") or 0)
+        update_job(
+            job_id,
+            status="completed",
+            result=result,
+            progress_phase="completed",
+            progress_current=total,
+            progress_total=total,
+        )
 
     except Exception as e:
         logger.exception(f"Processing failed for job {job_id}")
-        _processing_jobs[job_id]["status"] = "failed"
-        _processing_jobs[job_id]["error"] = str(e)
-        _processing_jobs[job_id]["progress"]["phase"] = "failed"
-        _processing_jobs[job_id]["progress"]["detail"] = str(e)
+        update_job(
+            job_id,
+            status="failed",
+            result=progress_result(str(e), **progress_metadata),
+            error_message=str(e),
+            progress_phase="failed",
+        )
 
         try:
             from backend.database import get_write_connection

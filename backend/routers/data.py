@@ -1,12 +1,20 @@
 import threading
-import uuid
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from backend.database import get_write_connection, get_connection
 from backend.services.backup_service import create_backup
+from backend.services.job_status_adapter import (
+    LEGACY_RESYNC_JOB_TYPE,
+    LEGACY_UPLOAD_JOB_TYPE,
+    has_active_operational_job,
+    legacy_job_status,
+    progress_result,
+)
+from backend.services.operational_catalog_service import create_job, get_job, update_job
 
 router = APIRouter(prefix="/data")
+logger = logging.getLogger(__name__)
 
-_resync_jobs = {}
 _resync_lock = threading.Lock()
 
 
@@ -324,52 +332,64 @@ async def delete_by_period_range(body: dict):
 
 @router.post("/resync")
 async def start_resync():
-    from backend.routers.upload import _processing_jobs, _processing_lock
-    with _processing_lock:
-        active_uploads = [j for j in _processing_jobs.values() if j.get("status") == "processing"]
-    if active_uploads:
+    if has_active_operational_job(LEGACY_UPLOAD_JOB_TYPE):
         raise HTTPException(
             status_code=409,
             detail="Upload sedang berjalan. Tunggu upload selesai sebelum sinkronisasi.",
         )
 
     with _resync_lock:
-        active = [j for j in _resync_jobs.values() if j["status"] == "processing"]
-        if active:
+        if has_active_operational_job(LEGACY_RESYNC_JOB_TYPE):
             raise HTTPException(
                 status_code=409,
                 detail="Sinkronisasi sedang berjalan. Mohon tunggu...",
             )
 
-        job_id = str(uuid.uuid4())[:8]
-        _resync_jobs[job_id] = {
-            "status": "processing",
-            "progress": {"phase": "starting", "detail": "Memulai...", "row": 0, "total": 0},
-            "result": None,
-            "error": None,
-        }
+        job = create_job(LEGACY_RESYNC_JOB_TYPE, payload={"requested_from": "api"})
+        job_id = job["job_id"]
+        update_job(
+            job_id,
+            status="running",
+            result=progress_result("Memulai..."),
+            progress_phase="starting",
+            progress_current=0,
+            progress_total=0,
+        )
 
     def run_resync():
         try:
             def update_progress(phase, detail="", row=0, total=0):
-                if job_id in _resync_jobs:
-                    _resync_jobs[job_id]["progress"] = {
-                        "phase": phase, "detail": detail, "row": row, "total": total,
-                    }
+                update_job(
+                    job_id,
+                    status="running",
+                    result=progress_result(detail),
+                    progress_phase=phase,
+                    progress_current=row,
+                    progress_total=total,
+                )
 
             from backend.services.resync_service import resync_hierarchy
             result = resync_hierarchy(progress_callback=update_progress)
+            total = int(result.get("total_tickets") or 0)
 
-            _resync_jobs[job_id]["status"] = "completed"
-            _resync_jobs[job_id]["result"] = result
+            update_job(
+                job_id,
+                status="completed",
+                result=result,
+                progress_phase="completed",
+                progress_current=total,
+                progress_total=total,
+            )
 
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).exception(f"Resync failed for job {job_id}")
-            _resync_jobs[job_id]["status"] = "failed"
-            _resync_jobs[job_id]["error"] = str(e)
-            _resync_jobs[job_id]["progress"]["phase"] = "failed"
-            _resync_jobs[job_id]["progress"]["detail"] = str(e)
+            logger.exception(f"Resync failed for job {job_id}")
+            update_job(
+                job_id,
+                status="failed",
+                result=progress_result(str(e)),
+                error_message=str(e),
+                progress_phase="failed",
+            )
 
     thread = threading.Thread(target=run_resync, daemon=True)
     thread.start()
@@ -379,7 +399,10 @@ async def start_resync():
 
 @router.get("/resync/status/{job_id}")
 async def resync_status(job_id: str):
-    job = _resync_jobs.get(job_id)
-    if not job:
+    try:
+        job = get_job(job_id)
+    except KeyError:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    if job.get("job_type") != LEGACY_RESYNC_JOB_TYPE:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return legacy_job_status(job)

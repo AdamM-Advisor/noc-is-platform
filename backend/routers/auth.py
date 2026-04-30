@@ -8,6 +8,7 @@ from backend.services.auth_service import (
     invalidate_session, send_2fa_email, MASKED_EMAIL,
     _check_rate_limit, _record_attempt,
 )
+from backend.config import COOKIE_SAMESITE, COOKIE_SECURE, SESSION_COOKIE_DOMAIN
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,9 @@ async def verify_2fa(req: Verify2FARequest, response: Response):
             key=SESSION_COOKIE,
             value=req.session_id,
             httponly=True,
-            samesite="lax",
+            secure=COOKIE_SECURE,
+            samesite=COOKIE_SAMESITE,
+            domain=SESSION_COOKIE_DOMAIN,
             max_age=86400,
             path="/",
         )
@@ -87,5 +90,11 @@ async def logout(request: Request, response: Response):
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         invalidate_session(token)
-    response.delete_cookie(key=SESSION_COOKIE, path="/")
+    response.delete_cookie(
+        key=SESSION_COOKIE,
+        path="/",
+        domain=SESSION_COOKIE_DOMAIN,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+    )
     return {"success": True}

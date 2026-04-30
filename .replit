@@ -73,5 +73,5 @@ run = ["python3", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--p
 [userenv]
 
 [userenv.shared]
-ADMIN_PASSWORD_HASH = "b93d3371190cfbf200abab658645391fa81803d275ac95d9a6eb8272a62f412d"
-ADMIN_EMAIL = "adammedidjati@gmail.com"
+ADMIN_PASSWORD_HASH = "replace-with-secret-env-value"
+ADMIN_EMAIL = "admin@example.com"

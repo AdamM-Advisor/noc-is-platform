@@ -68,6 +68,7 @@ def _boot():
         from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
         from fastapi.staticfiles import StaticFiles
         from contextlib import asynccontextmanager
+        from backend.config import CORS_ALLOW_ORIGINS
 
         AUTH_EXEMPT_PATHS = {
             "/", "/healthz", "/api/auth/login", "/api/auth/verify-2fa",
@@ -83,7 +84,12 @@ def _boot():
 
         full.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=CORS_ALLOW_ORIGINS or [
+                "http://localhost:5000",
+                "http://127.0.0.1:5000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -117,7 +123,7 @@ def _boot():
         from backend.routers import profiler, gangguan, predictive
         from backend.routers import dashboard, report_card
         from backend.routers import saved_views, comparison
-        from backend.routers import reports, ndc, auth
+        from backend.routers import reports, ndc, auth, ops
 
         full.include_router(auth.router, prefix="/api")
         full.include_router(health.router, prefix="/api")
@@ -142,6 +148,7 @@ def _boot():
         full.include_router(comparison.router, prefix="/api")
         full.include_router(reports.router, prefix="/api")
         full.include_router(ndc.router, prefix="/api")
+        full.include_router(ops.router, prefix="/api")
 
         if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "assets").is_dir():
             full.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static-assets")
@@ -176,6 +183,9 @@ def _boot():
 
         with get_write_connection() as wconn:
             _migrate_saved_views(wconn)
+
+        from backend.services.operational_catalog_service import initialize_operational_catalog
+        initialize_operational_catalog()
 
         status = get_schema_status()
         if not status["initialized"]:
