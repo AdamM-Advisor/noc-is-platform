@@ -128,12 +128,12 @@
 ## 9. External Setup Timing
 
 - [x] Document when GitHub, Cloudflare, and Google Cloud are needed.
-- [ ] Prepare GitHub repository.
+- [x] Prepare GitHub repository.
 - [ ] Prepare Google Cloud project.
 - [ ] Prepare Cloudflare Pages project.
 
 ## Current Setup Requirement
 
-No external setup is required yet. Continue local implementation until the ingestion foundation and Docker build are ready.
+GitHub repository is prepared and `main` has been pushed. Continue with Google Cloud preparation for GCS, Secret Manager, Cloud Build, and Cloud Run validation.
 
 The next setup checkpoint will come when we are ready to verify `execute-bronze` against a real `gs://` bucket and run the first Cloud Build image.
