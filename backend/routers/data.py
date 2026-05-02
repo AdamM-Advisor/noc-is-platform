@@ -25,8 +25,9 @@ async def get_data_coverage():
     total_tickets = 0
 
     with get_connection() as conn:
+        ticket_rows = []
         try:
-            rows = conn.execute("""
+            ticket_rows = conn.execute("""
                 SELECT calc_year_month, calc_source, COUNT(*) as cnt
                 FROM noc_tickets
                 WHERE calc_year_month IS NOT NULL AND calc_source IS NOT NULL
@@ -34,12 +35,31 @@ async def get_data_coverage():
                 ORDER BY calc_year_month, calc_source
             """).fetchall()
         except Exception:
-            rows = []
+            ticket_rows = []
+
+        partition_rows = []
+        try:
+            partition_rows = conn.execute("""
+                SELECT
+                    printf('%04d-%02d', year, month) AS year_month,
+                    source,
+                    SUM(row_count) AS cnt
+                FROM lake_partitions
+                WHERE dataset = 'tickets'
+                  AND layer = 'silver'
+                  AND year IS NOT NULL
+                  AND month IS NOT NULL
+                  AND source IS NOT NULL
+                GROUP BY year, month, source
+                ORDER BY year, month, source
+            """).fetchall()
+        except Exception:
+            partition_rows = []
 
         import_rows = []
         try:
             import_rows = conn.execute("""
-                SELECT id, period, file_type, rows_imported, orphan_count, status, imported_at
+                SELECT id, filename, period, file_type, rows_imported, orphan_count, status, imported_at
                 FROM import_logs
                 ORDER BY imported_at DESC
             """).fetchall()
@@ -47,11 +67,21 @@ async def get_data_coverage():
         except Exception:
             import_cols = []
 
-    for ym, src, cnt in rows:
+    row_source_by_key = {}
+    for ym, src, cnt in ticket_rows:
         if ym not in coverage:
             coverage[ym] = {}
-        coverage[ym][src] = {"exists": True, "count": cnt}
-        total_tickets += cnt
+        coverage[ym][src] = {"exists": True, "count": int(cnt or 0), "storage_layer": "duckdb"}
+        row_source_by_key[(ym, src)] = "duckdb"
+
+    for ym, src, cnt in partition_rows:
+        key = (ym, src)
+        if key in row_source_by_key:
+            continue
+        if ym not in coverage:
+            coverage[ym] = {}
+        coverage[ym][src] = {"exists": True, "count": int(cnt or 0), "storage_layer": "parquet"}
+        row_source_by_key[key] = "parquet"
 
     import_by_period = {}
     for row in import_rows:
@@ -60,6 +90,18 @@ async def get_data_coverage():
         if key not in import_by_period:
             import_by_period[key] = []
         import_by_period[key].append(imp)
+
+        if key not in row_source_by_key and imp.get("status") == "completed":
+            ym, src = key
+            if ym and src:
+                if ym not in coverage:
+                    coverage[ym] = {}
+                coverage[ym][src] = {
+                    "exists": True,
+                    "count": int(imp.get("rows_imported") or 0),
+                    "storage_layer": "import_log",
+                }
+                row_source_by_key[key] = "import_log"
 
     for ym in coverage:
         for src in sources:
@@ -74,6 +116,12 @@ async def get_data_coverage():
 
     months = sorted(coverage.keys())
     sources_active = list(set(src for ym in coverage for src, info in coverage[ym].items() if info.get("exists")))
+    total_tickets = sum(
+        int(info.get("count") or 0)
+        for ym in coverage.values()
+        for info in ym.values()
+        if info.get("exists")
+    )
 
     return {
         "coverage": coverage,

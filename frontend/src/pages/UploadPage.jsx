@@ -256,12 +256,38 @@ function UploadPage() {
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
-  const handleFileSelect = (file) => {
+  const formatActiveUploadMessage = (activeJob) => {
+    if (!activeJob) return 'Sedang memproses upload lain. Mohon tunggu...';
+    const phase = PHASE_LABELS[activeJob.progress?.phase] || activeJob.progress?.phase || 'memproses';
+    const name = activeJob.filename ? ` (${activeJob.filename})` : '';
+    return `Sedang memproses upload lain${name}: ${phase}`;
+  };
+
+  const ensureNoActiveUpload = async () => {
+    try {
+      const res = await client.get('/upload/process/active');
+      const activeJob = res.data?.active?.[0];
+      if (activeJob) {
+        setError(formatActiveUploadMessage(activeJob));
+        return false;
+      }
+    } catch (e) {
+      setError('Gagal memeriksa status processing');
+      return false;
+    }
+    return true;
+  };
+
+  const handleFileSelect = async (file) => {
     const ext = getExtension(file.name);
     if (!ALLOWED_TYPES.includes(ext)) {
       setError(`Tipe file tidak didukung: ${ext}. Gunakan .xlsx, .csv, atau .parquet`);
       return;
     }
+
+    const canUpload = await ensureNoActiveUpload();
+    if (!canUpload) return;
+
     resetState();
     setSelectedFile(file);
     uploadFile(file);
@@ -372,7 +398,16 @@ function UploadPage() {
         }
       }, 1000);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Processing gagal');
+      if (err.response?.status === 409) {
+        try {
+          const active = await client.get('/upload/process/active');
+          setError(formatActiveUploadMessage(active.data?.active?.[0]));
+        } catch (_) {
+          setError(err.response?.data?.detail || 'Sedang memproses upload lain. Mohon tunggu...');
+        }
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Processing gagal');
+      }
       setIsProcessing(false);
     }
   };

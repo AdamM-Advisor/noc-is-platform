@@ -10,6 +10,7 @@ from backend.services.job_status_adapter import (
     LEGACY_UPLOAD_JOB_TYPE,
     has_active_operational_job,
     legacy_upload_job_status,
+    list_active_operational_jobs,
     progress_result,
 )
 from backend.services.operational_catalog_service import create_job, get_job, update_job
@@ -165,6 +166,17 @@ async def process_upload(data: dict):
     thread.start()
 
     return {"job_id": job_id, "status": "processing"}
+
+
+@router.get("/process/active")
+async def active_upload_processes():
+    jobs = list_active_operational_jobs(LEGACY_UPLOAD_JOB_TYPE)
+    return {
+        "active": [
+            {"job_id": job["job_id"], **legacy_upload_job_status(job)}
+            for job in jobs
+        ]
+    }
 
 
 @router.get("/process/status/{job_id}")

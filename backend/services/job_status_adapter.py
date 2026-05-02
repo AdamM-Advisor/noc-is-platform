@@ -92,9 +92,17 @@ def legacy_upload_job_status(job: dict) -> dict:
 
 
 def has_active_operational_job(job_type: str) -> bool:
+    return bool(list_active_operational_jobs(job_type, limit=1))
+
+
+def list_active_operational_jobs(job_type: str, limit: int = 10) -> list[dict]:
     from backend.services.operational_catalog_service import list_jobs
 
-    return any(
-        list_jobs(status=status, job_type=job_type, limit=1)
-        for status in ACTIVE_JOB_STATUSES
-    )
+    jobs: list[dict] = []
+    for status in ACTIVE_JOB_STATUSES:
+        jobs.extend(list_jobs(status=status, job_type=job_type, limit=limit))
+    return sorted(
+        jobs,
+        key=lambda job: str(job.get("updated_at") or job.get("created_at") or ""),
+        reverse=True,
+    )[:limit]
