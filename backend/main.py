@@ -98,6 +98,8 @@ def _boot():
         @full.middleware("http")
         async def auth_mw(request: Request, call_next):
             p = request.url.path
+            if request.method == "OPTIONS":
+                return await call_next(request)
             if p.startswith("/api/") and p not in AUTH_EXEMPT_PATHS:
                 from backend.services.auth_service import validate_session
                 token = request.cookies.get("nocis_session")
