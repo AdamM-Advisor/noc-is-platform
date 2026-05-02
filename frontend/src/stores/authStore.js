@@ -8,6 +8,7 @@ const useAuthStore = create((set, get) => ({
   step: 'password',
   sessionId: null,
   maskedEmail: null,
+  devCode: null,
   error: null,
   loading: false,
 
@@ -34,6 +35,7 @@ const useAuthStore = create((set, get) => ({
           step: '2fa',
           sessionId: res.data.session_id,
           maskedEmail: res.data.masked_email,
+          devCode: res.data.dev_code || null,
           loading: false,
           error: null,
         });
@@ -62,6 +64,7 @@ const useAuthStore = create((set, get) => ({
           user: 'Dr. Adam M.',
           step: 'password',
           sessionId: null,
+          devCode: null,
           loading: false,
           error: null,
         });
@@ -86,6 +89,7 @@ const useAuthStore = create((set, get) => ({
       step: 'password',
       sessionId: null,
       maskedEmail: null,
+      devCode: null,
       error: null,
     });
   },
@@ -95,6 +99,7 @@ const useAuthStore = create((set, get) => ({
       step: 'password',
       sessionId: null,
       maskedEmail: null,
+      devCode: null,
       error: null,
     });
   },

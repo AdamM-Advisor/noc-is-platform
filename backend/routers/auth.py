@@ -8,7 +8,7 @@ from backend.services.auth_service import (
     invalidate_session, send_2fa_email, MASKED_EMAIL,
     _check_rate_limit, _record_attempt,
 )
-from backend.config import COOKIE_SAMESITE, COOKIE_SECURE, SESSION_COOKIE_DOMAIN
+from backend.config import APP_ENV, COOKIE_SAMESITE, COOKIE_SECURE, LOCAL_AUTH_SHOW_2FA_CODE, SESSION_COOKIE_DOMAIN
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,17 @@ async def login(req: LoginRequest, request: Request, response: Response):
     session_id = create_session()
     code = generate_2fa_code()
     store_pending_2fa(session_id.split(".")[0], code)
+
+    if APP_ENV == "development" and LOCAL_AUTH_SHOW_2FA_CODE:
+        logger.warning("Development login 2FA code for %s: %s", MASKED_EMAIL, code)
+        return {
+            "success": True,
+            "step": "2fa",
+            "session_id": session_id,
+            "email_sent": False,
+            "masked_email": MASKED_EMAIL,
+            "dev_code": code,
+        }
 
     email_sent = send_2fa_email(code)
 

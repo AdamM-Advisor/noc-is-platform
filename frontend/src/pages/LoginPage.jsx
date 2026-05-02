@@ -3,7 +3,7 @@ import { Lock, Shield, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 
 function LoginPage() {
-  const { step, maskedEmail, error, loading, login, verify2fa, resetLogin } = useAuthStore();
+  const { step, maskedEmail, devCode, error, loading, login, verify2fa, resetLogin } = useAuthStore();
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -152,6 +152,12 @@ function LoginPage() {
                   />
                 ))}
               </div>
+
+              {devCode && (
+                <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 text-center">
+                  Kode development lokal: <span className="font-bold tracking-wider">{devCode}</span>
+                </div>
+              )}
 
               {error && (
                 <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 text-center">

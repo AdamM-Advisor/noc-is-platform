@@ -38,3 +38,7 @@ CORS_ALLOW_ORIGINS = [
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "1" if APP_ENV == "production" else "0").lower() in ("1", "true", "yes")
 COOKIE_SAMESITE = os.environ.get("COOKIE_SAMESITE", "none" if APP_ENV == "production" else "lax").lower()
 SESSION_COOKIE_DOMAIN = os.environ.get("SESSION_COOKIE_DOMAIN", "").strip() or None
+LOCAL_AUTH_SHOW_2FA_CODE = (
+    os.environ.get("LOCAL_AUTH_SHOW_2FA_CODE", "1" if APP_ENV == "development" else "0").lower()
+    in ("1", "true", "yes")
+)
