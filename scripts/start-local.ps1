@@ -1,5 +1,6 @@
 param(
-    [switch]$InstallDeps
+    [switch]$InstallDeps,
+    [switch]$RestartExisting
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,19 +16,27 @@ if ($InstallDeps) {
 
 $backend = Join-Path $PSScriptRoot "start-backend.ps1"
 $frontend = Join-Path $PSScriptRoot "start-frontend.ps1"
-
-Start-Process -FilePath powershell.exe -ArgumentList @(
+$backendArgs = @(
     "-NoExit",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$backend`""
-) -WorkingDirectory $Root
-
-Start-Process -FilePath powershell.exe -ArgumentList @(
+)
+$frontendArgs = @(
     "-NoExit",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$frontend`""
-) -WorkingDirectory $Root
+)
+
+if ($RestartExisting) {
+    $backendArgs += "-RestartExisting"
+    $frontendArgs += "-RestartExisting"
+}
+
+Start-Process -FilePath powershell.exe -ArgumentList $backendArgs -WorkingDirectory $Root
+
+Start-Process -FilePath powershell.exe -ArgumentList $frontendArgs -WorkingDirectory $Root
 
 Write-Host "Backend : http://127.0.0.1:8000"
 Write-Host "Frontend: http://127.0.0.1:5173"
+Write-Host "Restart bersih: .\scripts\start-local.cmd -RestartExisting"
 Write-Host "Login lokal default dibuat oleh setup-local.ps1 bila .env.local belum ada."

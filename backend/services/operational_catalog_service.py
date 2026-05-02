@@ -1,4 +1,5 @@
 import json
+import threading
 import uuid
 from datetime import date, datetime
 from typing import Any
@@ -7,6 +8,8 @@ from backend.database import get_connection, get_write_connection
 
 
 JOB_STATUSES = {"queued", "running", "completed", "failed", "cancelled"}
+_catalog_lock = threading.Lock()
+_initialized_db_path: str | None = None
 
 
 DDL = [
@@ -85,10 +88,22 @@ DDL = [
 ]
 
 
-def initialize_operational_catalog() -> dict:
-    with get_write_connection() as conn:
-        for ddl in DDL:
-            conn.execute(ddl)
+def initialize_operational_catalog(force: bool = False) -> dict:
+    global _initialized_db_path
+
+    from backend import database as database_module
+
+    current_db_path = database_module.DB_PATH
+    if not force and _initialized_db_path == current_db_path:
+        return {"status": "ok", "tables": ["operational_jobs", "file_catalog", "lake_partitions", "model_run_catalog"]}
+
+    with _catalog_lock:
+        if not force and _initialized_db_path == current_db_path:
+            return {"status": "ok", "tables": ["operational_jobs", "file_catalog", "lake_partitions", "model_run_catalog"]}
+        with get_write_connection() as conn:
+            for ddl in DDL:
+                conn.execute(ddl)
+        _initialized_db_path = current_db_path
     return {"status": "ok", "tables": ["operational_jobs", "file_catalog", "lake_partitions", "model_run_catalog"]}
 
 
