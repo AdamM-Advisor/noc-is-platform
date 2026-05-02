@@ -43,6 +43,9 @@
 - [x] Smoke test backtesting workflow with local silver Parquet and temporary catalog.
 - [ ] Verify backtesting workflow against Google Cloud Storage from Cloud Run Jobs.
 - [x] Add model monitoring metrics.
+- [x] Add SARIMAX batch forecast job from summary cache.
+- [x] Persist SARIMAX forecast outputs to model run catalog.
+- [ ] Validate SARIMAX runtime after `statsmodels` is installed locally/cloud.
 
 ## 3. Deployment Foundation
 
@@ -93,6 +96,11 @@
 - [x] Register generated bronze partitions in catalog.
 - [x] Register generated silver partitions in catalog.
 - [x] Refresh monthly summary partitions.
+- [x] Add RAW CSV/Excel/Parquet to Parquet pipeline.
+- [x] Archive original RAW files before conversion.
+- [x] Add CLI commands for `import-raw-file` and `import-raw-folder`.
+- [x] Refresh DuckDB summary cache from Silver Parquet for existing UI reads.
+- [ ] Add UI control to trigger folder-level RAW import jobs.
 
 ## 6. Backend API Migration
 
@@ -103,7 +111,8 @@
 - [x] Replace in-memory upload processing jobs.
 - [x] Replace in-memory resync jobs.
 - [ ] Split monolithic routers into domain modules.
-- [ ] Route dashboard/profiler reads through gold summaries.
+- [x] Route upload pipeline through gold summaries and DuckDB summary cache.
+- [ ] Route dashboard/profiler reads directly through gold Parquet summaries.
 - [ ] Route drill-down reads through targeted Parquet scans.
 
 ## 7. Frontend Migration

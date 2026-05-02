@@ -3,7 +3,7 @@ import threading
 import logging
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, Header, HTTPException, Request
-from backend.config import SINGLE_UPLOAD_LIMIT_MB, CHUNK_SIZE_MB, UPLOAD_DIR
+from backend.config import SINGLE_UPLOAD_LIMIT_MB, CHUNK_SIZE_MB, UPLOAD_DIR, UPLOAD_PIPELINE_MODE
 from backend.services.upload_service import save_upload, save_chunk, assemble_chunks, get_chunk_status
 from backend.services.file_detector import detect_file_type
 from backend.services.job_status_adapter import (
@@ -218,6 +218,17 @@ def _run_processing(job_id, file_path, filename, file_type_override):
             from backend.services.site_master_processor import process_site_master
             result = process_site_master(file_path, progress_callback=update_progress)
             _log_site_master_import(filename, file_path, result)
+        elif UPLOAD_PIPELINE_MODE == "parquet":
+            from backend.services.raw_pipeline_service import process_raw_ticket_file
+
+            source = file_type if file_type != "unknown" else "auto"
+            result = process_raw_ticket_file(
+                file_path,
+                source=source,
+                filename=filename,
+                job_id=job_id,
+                refresh_summary_cache=True,
+            )
         else:
             from backend.services.ticket_processor import process_ticket_file
             detected_header_format = detection.get("header_format", None)

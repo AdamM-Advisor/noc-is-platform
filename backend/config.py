@@ -16,11 +16,12 @@ DATA_DIR = os.environ.get("NOCIS_DATA_DIR", DATA_DIR)
 UPLOAD_DIR = os.environ.get("NOCIS_UPLOAD_DIR", UPLOAD_DIR)
 
 DB_PATH = os.environ.get("NOCIS_DB_PATH", os.path.join(DATA_DIR, "noc_analytics.duckdb"))
+RAW_DIR = os.environ.get("NOCIS_RAW_DIR", os.path.join(DATA_DIR, "raw"))
 BACKUP_DIR = os.environ.get("NOCIS_BACKUP_DIR", os.path.join(DATA_DIR, "backups"))
 CHUNK_DIR = os.environ.get("NOCIS_CHUNK_DIR", os.path.join(BASE_DIR, "temp_chunks"))
 EXPORT_DIR = os.environ.get("NOCIS_EXPORT_DIR", os.path.join(BASE_DIR, "exports"))
 
-for d in [DATA_DIR, BACKUP_DIR, UPLOAD_DIR, CHUNK_DIR, EXPORT_DIR]:
+for d in [DATA_DIR, RAW_DIR, BACKUP_DIR, UPLOAD_DIR, CHUNK_DIR, EXPORT_DIR]:
     os.makedirs(d, exist_ok=True)
 
 DUCKDB_MEMORY_LIMIT = "512MB"
@@ -28,6 +29,7 @@ DUCKDB_THREADS = 2
 CHUNK_SIZE_MB = 5
 MAX_BACKUP_COUNT = 3
 SINGLE_UPLOAD_LIMIT_MB = 10
+UPLOAD_PIPELINE_MODE = os.environ.get("NOCIS_UPLOAD_PIPELINE_MODE", "parquet").strip().lower()
 
 CORS_ALLOW_ORIGINS = [
     origin.strip()

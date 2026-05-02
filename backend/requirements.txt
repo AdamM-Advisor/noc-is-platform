@@ -11,3 +11,4 @@ jinja2
 matplotlib
 weasyprint
 google-cloud-storage
+statsmodels

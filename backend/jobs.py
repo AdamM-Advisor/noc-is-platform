@@ -29,6 +29,8 @@ from backend.services.summary_lake_service import (
     monthly_summary_writer_sql,
 )
 from backend.services.benchmark_service import LocalBenchmarkConfig, run_local_benchmark
+from backend.services.raw_pipeline_service import import_raw_folder, process_raw_ticket_file
+from backend.services.sarimax_service import SarimaxRunConfig, run_sarimax_volume_forecast
 
 
 def ensure_lake(_args):
@@ -269,6 +271,43 @@ def benchmark_local(args):
     )
 
 
+def import_raw_file(args):
+    return process_raw_ticket_file(
+        raw_file_path=args.raw_file,
+        source=args.source,
+        year=args.year,
+        month=args.month,
+        refresh_summary_cache=not args.skip_summary_cache,
+    )
+
+
+def import_raw_folder_command(args):
+    return import_raw_folder(
+        raw_root=args.raw_root,
+        source=args.source,
+        year=args.year,
+        month=args.month,
+        recursive=not args.no_recursive,
+        limit=args.limit,
+    )
+
+
+def execute_sarimax_forecast(args):
+    return run_sarimax_volume_forecast(
+        SarimaxRunConfig(
+            entity_level=args.entity_level,
+            entity_id=args.entity_id,
+            window_start=args.window_start,
+            window_end=args.window_end,
+            horizon=args.horizon,
+            limit=args.limit,
+            min_points=args.min_points,
+            persist_model_runs=not args.no_persist_model_runs,
+            job_id=args.job_id,
+        )
+    )
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="NOC-IS Cloud Run job commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -417,6 +456,35 @@ def build_parser():
     benchmark.add_argument("--skip-backtest", action="store_true")
     benchmark.add_argument("--persist-model-runs", action="store_true")
     benchmark.set_defaults(func=benchmark_local)
+
+    raw_file = sub.add_parser("import-raw-file", help="Archive one RAW CSV/Excel/Parquet ticket file and run the Parquet pipeline")
+    raw_file.add_argument("raw_file")
+    raw_file.add_argument("--source", default="auto")
+    raw_file.add_argument("--year", type=int, default=None)
+    raw_file.add_argument("--month", type=int, default=None)
+    raw_file.add_argument("--skip-summary-cache", action="store_true")
+    raw_file.set_defaults(func=import_raw_file)
+
+    raw_folder = sub.add_parser("import-raw-folder", help="Run RAW-to-Parquet pipeline for all supported files in a folder")
+    raw_folder.add_argument("raw_root")
+    raw_folder.add_argument("--source", default="auto")
+    raw_folder.add_argument("--year", type=int, default=None)
+    raw_folder.add_argument("--month", type=int, default=None)
+    raw_folder.add_argument("--no-recursive", action="store_true")
+    raw_folder.add_argument("--limit", type=int, default=None)
+    raw_folder.set_defaults(func=import_raw_folder_command)
+
+    sarimax = sub.add_parser("execute-sarimax-forecast", help="Run persisted SARIMAX volume forecasts from summary cache")
+    sarimax.add_argument("--entity-level", default="site", choices=["area", "regional", "nop", "to", "site"])
+    sarimax.add_argument("--entity-id", default=None)
+    sarimax.add_argument("--window-start", required=True, help="YYYY-MM")
+    sarimax.add_argument("--window-end", required=True, help="YYYY-MM")
+    sarimax.add_argument("--horizon", type=int, default=3)
+    sarimax.add_argument("--limit", type=int, default=100)
+    sarimax.add_argument("--min-points", type=int, default=6)
+    sarimax.add_argument("--job-id", default=None)
+    sarimax.add_argument("--no-persist-model-runs", action="store_true")
+    sarimax.set_defaults(func=execute_sarimax_forecast)
 
     return parser
 

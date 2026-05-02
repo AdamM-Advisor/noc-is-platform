@@ -13,6 +13,7 @@ dependencies = [
     "psutil>=7.2.2",
     "pyarrow>=18.0.0",
     "matplotlib>=3.10.0",
+    "statsmodels>=0.14.4",
     "weasyprint>=66.0",
     "google-cloud-storage>=3.0.0",
     "python-multipart>=0.0.22",

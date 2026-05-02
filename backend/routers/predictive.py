@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Query
 from typing import Optional
 from backend.database import get_connection, get_write_connection
 from backend.services.predictive_service import (
@@ -17,6 +17,8 @@ from backend.services.predictive_service import (
     get_monthly_sla_data,
     get_child_sites,
 )
+from backend.services.operational_catalog_service import create_job
+from backend.services.sarimax_service import SarimaxRunConfig, latest_sarimax_forecast, run_sarimax_volume_forecast
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +239,23 @@ async def get_forecast(
         entity_name = _get_entity_name(conn, entity_level, entity_id)
         monthly_data = get_monthly_volume_data(conn, entity_level, entity_id, date_from, date_to)
 
+    cached_sarimax = latest_sarimax_forecast(
+        entity_level,
+        entity_id,
+        _year_month_or_none(date_from),
+        _year_month_or_none(date_to),
+    )
+    if cached_sarimax:
+        return {
+            "entity_level": entity_level,
+            "entity_id": entity_id,
+            "entity_name": entity_name,
+            "capacity_alert": None,
+            "cached": True,
+            "cache_source": "model_run_catalog",
+            **cached_sarimax,
+        }
+
     if not monthly_data or len(monthly_data) < 3:
         return {
             "entity_level": entity_level,
@@ -256,8 +275,58 @@ async def get_forecast(
         "entity_id": entity_id,
         "entity_name": entity_name,
         "capacity_alert": capacity_alert,
+        "cached": False,
         **result,
     }
+
+
+def _year_month_or_none(value: str) -> str | None:
+    if not value or len(value) < 7:
+        return None
+    candidate = value[:7]
+    if len(candidate) == 7 and candidate[4] == "-":
+        return candidate
+    return None
+
+
+@router.post("/forecast/sarimax/run")
+async def run_sarimax_forecast_job(
+    background_tasks: BackgroundTasks,
+    entity_level: str = Query("site"),
+    entity_id: Optional[str] = Query(None),
+    window_start: str = Query(...),
+    window_end: str = Query(...),
+    horizon: int = Query(3),
+    limit: int = Query(100),
+    min_points: int = Query(6),
+):
+    job = create_job(
+        "sarimax_forecast",
+        payload={
+            "entity_level": entity_level,
+            "entity_id": entity_id,
+            "window_start": window_start,
+            "window_end": window_end,
+            "horizon": horizon,
+            "limit": limit,
+            "min_points": min_points,
+        },
+        source="sarimax",
+    )
+    background_tasks.add_task(
+        run_sarimax_volume_forecast,
+        SarimaxRunConfig(
+            entity_level=entity_level,
+            entity_id=entity_id,
+            window_start=window_start,
+            window_end=window_end,
+            horizon=horizon,
+            limit=limit,
+            min_points=min_points,
+            job_id=job["job_id"],
+        ),
+    )
+    return {"status": "started", "job_id": job["job_id"]}
 
 
 @router.get("/sla-breach")

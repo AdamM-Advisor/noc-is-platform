@@ -58,12 +58,14 @@ ADMIN_PASSWORD_HASH=$passwordHash
 LOCAL_AUTH_SHOW_2FA_CODE=1
 NOCIS_DATA_DIR=.data
 NOCIS_DB_PATH=.data/noc_analytics.duckdb
+NOCIS_RAW_DIR=.data/raw
 NOCIS_UPLOAD_DIR=.uploads
 NOCIS_BACKUP_DIR=.data/backups
 NOCIS_CHUNK_DIR=temp_chunks
 NOCIS_EXPORT_DIR=exports
 NOCIS_LAKE_ROOT=.parquet_lake
 NOCIS_DUCKDB_INSTALL_EXTENSIONS=0
+NOCIS_UPLOAD_PIPELINE_MODE=parquet
 "@ | Set-Content -LiteralPath $backendEnv -Encoding UTF8
     Write-Host "Created .env.local"
 } else {
