@@ -60,6 +60,7 @@ function UploadPage() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [serverFilename, setServerFilename] = useState(null);
   const [detection, setDetection] = useState(null);
   const [fileTypeOverride, setFileTypeOverride] = useState('auto');
   const [processingStatus, setProcessingStatus] = useState(null);
@@ -243,6 +244,7 @@ function UploadPage() {
 
   const resetState = () => {
     setSelectedFile(null);
+    setServerFilename(null);
     setUploadStatus('idle');
     setUploadProgress(0);
     setDetection(null);
@@ -272,15 +274,17 @@ function UploadPage() {
 
     try {
       const sizeMB = file.size / (1024 * 1024);
+      let uploadedFilename = file.name;
       if (sizeMB < SINGLE_LIMIT_MB) {
         const formData = new FormData();
         formData.append('file', file);
-        await uploadClient.post('/upload/single', formData, {
+        const res = await uploadClient.post('/upload/single', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (e) => {
             if (e.total) setUploadProgress(Math.round((e.loaded / e.total) * 100));
           },
         });
+        uploadedFilename = res.data?.filename || uploadedFilename;
       } else {
         const uploadId = crypto.randomUUID();
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -300,16 +304,18 @@ function UploadPage() {
           });
         }
         setUploadProgress(95);
-        await uploadClient.post('/upload/chunk/complete', {
+        const res = await uploadClient.post('/upload/chunk/complete', {
           upload_id: uploadId,
           filename: file.name,
           total_chunks: totalChunks,
         });
+        uploadedFilename = res.data?.filename || uploadedFilename;
       }
 
       setUploadProgress(100);
       setUploadStatus('uploaded');
-      detectFileType(file.name);
+      setServerFilename(uploadedFilename);
+      detectFileType(uploadedFilename);
     } catch (err) {
       setUploadStatus('error');
       setError(err.response?.data?.detail || err.message || 'Upload gagal');
@@ -336,7 +342,7 @@ function UploadPage() {
     try {
       const fileType = fileTypeOverride !== 'auto' ? fileTypeOverride : 'auto';
       const res = await client.post('/upload/process', {
-        filename: selectedFile.name,
+        filename: serverFilename || selectedFile.name,
         file_type: fileType,
       });
 
