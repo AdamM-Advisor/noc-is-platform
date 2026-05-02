@@ -74,6 +74,11 @@ def _boot():
             "/", "/healthz", "/api/auth/login", "/api/auth/verify-2fa",
             "/api/auth/me", "/api/auth/logout", "/api/health",
         }
+        AUTH_EXEMPT_PREFIXES = (
+            "/api/upload/process/status/",
+            "/api/upload/chunk/status/",
+            "/api/data/resync/status/",
+        )
 
         @asynccontextmanager
         async def noop_lifespan(a):
@@ -100,7 +105,11 @@ def _boot():
             p = request.url.path
             if request.method == "OPTIONS":
                 return await call_next(request)
-            if p.startswith("/api/") and p not in AUTH_EXEMPT_PATHS:
+            if (
+                p.startswith("/api/")
+                and p not in AUTH_EXEMPT_PATHS
+                and not p.startswith(AUTH_EXEMPT_PREFIXES)
+            ):
                 from backend.services.auth_service import validate_session
                 token = request.cookies.get("nocis_session")
                 if not token or not validate_session(token):

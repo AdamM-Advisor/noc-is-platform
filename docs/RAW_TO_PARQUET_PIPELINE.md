@@ -66,6 +66,8 @@ NOCIS_DATA_DIR=C:\NOC-IS-Data\catalog
 NOCIS_DB_PATH=C:\NOC-IS-Data\catalog\noc_analytics.duckdb
 NOCIS_RAW_DIR=C:\NOC-IS-Data\raw
 NOCIS_LAKE_ROOT=C:\NOC-IS-Data\lake
+NOCIS_DUCKDB_MEMORY_LIMIT=4GB
+NOCIS_DUCKDB_THREADS=4
 ```
 
 ## Prediktif SARIMAX
