@@ -22,6 +22,12 @@ const MONTH_FULL = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Jul
 
 const PHASE_LABELS = {
   reading: 'Membaca file...',
+  detecting: 'Mendeteksi struktur data...',
+  raw_to_parquet: 'Mengonversi RAW ke Parquet...',
+  bronze_write: 'Menulis layer Bronze...',
+  silver_write: 'Menulis layer Silver...',
+  monthly_summary: 'Membuat summary bulanan...',
+  summary_cache: 'Memperbarui cache analitik...',
   normalizing: 'Menormalisasi header...',
   deduplicating: 'Mendeteksi duplikat...',
   calculating: 'Menghitung kolom kalkulasi...',
@@ -31,6 +37,16 @@ const PHASE_LABELS = {
   completed: 'Selesai',
   failed: 'Gagal',
 };
+
+const PARQUET_PIPELINE_PHASES = new Set([
+  'detecting',
+  'raw_to_parquet',
+  'bronze_write',
+  'silver_write',
+  'monthly_summary',
+  'summary_cache',
+  'completed',
+]);
 
 function formatCount(n) {
   if (!n && n !== 0) return '0';
@@ -379,11 +395,39 @@ function UploadPage() {
   };
 
   const getPhaseProgress = () => {
-    const phases = ['reading', 'normalizing', 'deduplicating', 'calculating', 'resolving', 'inserting', 'summarizing', 'completed'];
+    const current = Number(processingStatus?.row || 0);
+    const total = Number(processingStatus?.total || 0);
+    if (total > 0) {
+      return Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+    }
+
+    const phases = [
+      'reading',
+      'detecting',
+      'raw_to_parquet',
+      'bronze_write',
+      'silver_write',
+      'monthly_summary',
+      'summary_cache',
+      'normalizing',
+      'deduplicating',
+      'calculating',
+      'resolving',
+      'inserting',
+      'summarizing',
+      'completed',
+    ];
     const currentPhase = processingStatus?.phase || 'reading';
     const idx = phases.indexOf(currentPhase);
     if (idx < 0) return 0;
     return Math.round(((idx + 1) / phases.length) * 100);
+  };
+
+  const getProgressUnit = () => {
+    if (PARQUET_PIPELINE_PHASES.has(processingStatus?.phase) && Number(processingStatus?.total || 0) <= 20) {
+      return 'tahap';
+    }
+    return 'baris';
   };
 
   const confidenceColor = (c) => {
@@ -658,7 +702,7 @@ function UploadPage() {
               </div>
               {processingStatus.total > 0 && (
                 <p className="text-xs text-gray-400">
-                  {processingStatus.row?.toLocaleString()} / {processingStatus.total?.toLocaleString()} baris
+                  {processingStatus.row?.toLocaleString()} / {processingStatus.total?.toLocaleString()} {getProgressUnit()}
                 </p>
               )}
             </div>
