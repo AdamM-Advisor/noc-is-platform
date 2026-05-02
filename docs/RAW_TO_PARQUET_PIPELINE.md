@@ -4,7 +4,7 @@ Pipeline import utama sekarang memakai pola:
 
 ```text
 RAW CSV/Excel/Parquet
-  -> raw archive
+  -> raw reference/catalog
   -> converted source Parquet
   -> Bronze Parquet
   -> Silver Parquet
@@ -26,7 +26,16 @@ Untuk file tiket NOC, mode default lokal adalah:
 NOCIS_UPLOAD_PIPELINE_MODE=parquet
 ```
 
-Artinya file RAW tidak lagi wajib dikonversi manual sebelum upload. Aplikasi akan mengarsipkan file asli, mengonversi ke Parquet, membuat Bronze/Silver/Gold, lalu memperbarui summary cache.
+Artinya file RAW tidak lagi wajib dikonversi manual sebelum upload. Aplikasi akan membaca file RAW, mengonversi ke Parquet, membuat Bronze/Silver/Gold, lalu memperbarui summary cache.
+
+Default lokal tidak membuat duplikasi arsip RAW:
+
+```env
+NOCIS_ARCHIVE_RAW_FILES=0
+NOCIS_DELETE_UPLOAD_AFTER_PROCESS=1
+```
+
+Dengan konfigurasi ini, file RAW asli tetap disimpan oleh user di folder lokal sendiri. Untuk upload lewat browser, file sementara di `.uploads` akan dihapus setelah proses sukses.
 
 Site master tetap memakai jalur master-data karena perlu update tabel hierarchy/site.
 
@@ -51,7 +60,7 @@ Jika nama file tidak memuat periode `YYYY-MM`, pipeline akan mencoba membaca kol
 Dengan konfigurasi lokal default:
 
 ```text
-.data\raw\                         arsip file asli
+.data\raw\                         hanya dipakai jika NOCIS_ARCHIVE_RAW_FILES=1
 .parquet_lake\raw_converted\        file source Parquet hasil konversi RAW
 .parquet_lake\tickets\bronze\       Bronze Parquet
 .parquet_lake\tickets\silver\       Silver Parquet
@@ -68,6 +77,8 @@ NOCIS_RAW_DIR=C:\NOC-IS-Data\raw
 NOCIS_LAKE_ROOT=C:\NOC-IS-Data\lake
 NOCIS_DUCKDB_MEMORY_LIMIT=4GB
 NOCIS_DUCKDB_THREADS=4
+NOCIS_ARCHIVE_RAW_FILES=0
+NOCIS_DELETE_UPLOAD_AFTER_PROCESS=1
 ```
 
 ## Prediktif SARIMAX

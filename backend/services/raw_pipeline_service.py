@@ -50,12 +50,14 @@ def process_raw_ticket_file(
     job_id: str | None = None,
     refresh_summary_cache: bool = True,
 ) -> dict:
-    """Archive a RAW ticket file and materialize Bronze, Silver, and summary Parquet."""
+    """Materialize Bronze, Silver, and summary Parquet from a RAW ticket file."""
     start_time = time.time()
     raw_path = Path(raw_file_path)
     if not raw_path.is_file():
         raise FileNotFoundError(str(raw_path))
     _validate_extension(raw_path)
+    raw_checksum = sha256_file(raw_path)
+    raw_size_bytes = raw_path.stat().st_size
 
     from backend.services.schema_service import initialize_schema
 
@@ -90,7 +92,13 @@ def process_raw_ticket_file(
         raise ValueError("Periode tidak terdeteksi. Gunakan nama file YYYY-MM atau kolom yearmonth/occured_time.")
 
     period = format_year_month(target_year, target_month)
-    archived_raw_uri = _archive_raw_file(raw_path, metadata.source, target_year, target_month)
+    archived_raw_uri = None
+    raw_catalog_uri = _raw_catalog_uri(raw_path, filename)
+    raw_catalog_status = "raw_not_archived"
+    if config.ARCHIVE_RAW_FILES:
+        archived_raw_uri = _archive_raw_file(raw_path, metadata.source, target_year, target_month)
+        raw_catalog_uri = archived_raw_uri
+        raw_catalog_status = "archived_raw"
     source_parquet_uri = _move_staging_to_source_parquet(
         staging_uri,
         raw_path,
@@ -100,16 +108,16 @@ def process_raw_ticket_file(
     )
 
     register_file(
-        storage_uri=archived_raw_uri,
+        storage_uri=raw_catalog_uri,
         filename=filename or raw_path.name,
         file_type=f"{metadata.file_type}_raw",
         source=metadata.source,
-        checksum_sha256=sha256_file(Path(archived_raw_uri)),
-        size_bytes=Path(archived_raw_uri).stat().st_size,
+        checksum_sha256=raw_checksum,
+        size_bytes=raw_size_bytes,
         row_count=row_count,
         period_min=period,
         period_max=period,
-        status="archived_raw",
+        status=raw_catalog_status,
         job_id=managed_job_id,
     )
     register_file(
@@ -184,7 +192,9 @@ def process_raw_ticket_file(
         "skipped": 0,
         "errors": 0,
         "duration_sec": duration,
-        "raw_uri": archived_raw_uri,
+        "raw_uri": raw_catalog_uri,
+        "raw_archived": config.ARCHIVE_RAW_FILES,
+        "upload_deleted": False,
         "source_parquet_uri": source_parquet_uri,
         "bronze": bronze,
         "silver": silver,
@@ -193,6 +203,9 @@ def process_raw_ticket_file(
         "validation": validation,
     }
     _log_import(raw_path, metadata.file_type, period, row_count, duration)
+    if _delete_upload_after_success(raw_path):
+        raw_path.unlink(missing_ok=True)
+        result["upload_deleted"] = True
     update_job(
         managed_job_id,
         status="completed",
@@ -420,6 +433,12 @@ def _archive_raw_file(raw_path: Path, source: str, year: int, month: int) -> str
     return str(target_path)
 
 
+def _raw_catalog_uri(raw_path: Path, filename: str | None = None) -> str:
+    if _delete_upload_after_success(raw_path):
+        return f"raw://not-archived/{filename or raw_path.name}"
+    return str(raw_path.resolve())
+
+
 def _move_staging_to_source_parquet(staging_uri: str, raw_path: Path, source: str, year: int, month: int) -> str:
     digest = sha256_file(raw_path)[:12]
     target_dir = Path(str(lake.LAKE_ROOT)) / "raw_converted" / "tickets" / f"year={year:04d}" / f"month={month:02d}" / f"source={source}"
@@ -470,6 +489,8 @@ def _compact_result(result: dict) -> dict:
         "imported": result.get("imported"),
         "duration_sec": result.get("duration_sec"),
         "raw_uri": result.get("raw_uri"),
+        "raw_archived": result.get("raw_archived"),
+        "upload_deleted": result.get("upload_deleted"),
         "source_parquet_uri": result.get("source_parquet_uri"),
         "bronze_output_uri": (result.get("bronze") or {}).get("output_uri"),
         "silver_output_uri": (result.get("silver") or {}).get("output_uri"),
@@ -498,6 +519,18 @@ def _validate_extension(path: Path) -> None:
     if path.suffix.lower() not in RAW_EXTENSIONS:
         allowed = ", ".join(sorted(RAW_EXTENSIONS))
         raise ValueError(f"Unsupported raw extension: {path.suffix}. Allowed: {allowed}")
+
+
+def _delete_upload_after_success(raw_path: Path) -> bool:
+    return config.DELETE_UPLOAD_AFTER_PROCESS and _is_relative_to(raw_path, Path(config.UPLOAD_DIR))
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def _quote_identifier(value: str) -> str:

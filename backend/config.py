@@ -30,6 +30,8 @@ CHUNK_SIZE_MB = 5
 MAX_BACKUP_COUNT = 3
 SINGLE_UPLOAD_LIMIT_MB = 10
 UPLOAD_PIPELINE_MODE = os.environ.get("NOCIS_UPLOAD_PIPELINE_MODE", "parquet").strip().lower()
+ARCHIVE_RAW_FILES = os.environ.get("NOCIS_ARCHIVE_RAW_FILES", "0").lower() in ("1", "true", "yes")
+DELETE_UPLOAD_AFTER_PROCESS = os.environ.get("NOCIS_DELETE_UPLOAD_AFTER_PROCESS", "1").lower() in ("1", "true", "yes")
 
 CORS_ALLOW_ORIGINS = [
     origin.strip()
