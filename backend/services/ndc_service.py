@@ -3,9 +3,11 @@ import logging
 import math
 import re
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from statistics import mean, stdev, median
-from backend.database import get_connection, get_write_connection
+from backend.database import get_connection as _db_get_connection, get_write_connection as _db_get_write_connection
+from backend.services.parquet_lake_service import ParquetTicketLake
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ CATEGORY_MAP = {
 }
 DEFAULT_CATEGORY = {'code': 'OTH', 'name': 'Other'}
 MIN_TICKETS = 10
+NDC_TICKET_SOURCE = "ndc_ticket_source"
 
 SYMPTOM_PATTERNS = {
     "Site unreachable / NE down": {
@@ -69,13 +72,55 @@ def _safe_q(val):
     return str(val).replace("'", "''")
 
 
+@contextmanager
+def get_connection():
+    with _db_get_connection() as conn:
+        _ensure_ndc_ticket_source(conn)
+        yield conn
+
+
+@contextmanager
+def get_write_connection():
+    with _db_get_write_connection() as conn:
+        _ensure_ndc_ticket_source(conn)
+        yield conn
+
+
+def _ensure_ndc_ticket_source(conn):
+    """Expose a temp source view for NDC generation.
+
+    Legacy imports populate `noc_tickets`; the Parquet pipeline keeps ticket
+    detail in Silver files. NDC generation needs ticket-level fields, so each
+    DuckDB connection gets a small temp view that prefers `noc_tickets` when it
+    has rows and otherwise falls back to Silver Parquet.
+    """
+    source_sql = "SELECT * FROM noc_tickets"
+    source_label = "noc_tickets"
+    try:
+        legacy_rows = conn.execute("SELECT COUNT(*) FROM noc_tickets").fetchone()[0] or 0
+    except Exception:
+        legacy_rows = 0
+
+    if legacy_rows <= 0:
+        lake_sql = ParquetTicketLake().read_parquet_sql(layer="silver")
+        try:
+            conn.execute(f"SELECT 1 FROM {lake_sql} LIMIT 1").fetchone()
+            source_sql = f"SELECT * FROM {lake_sql}"
+            source_label = "silver_parquet"
+        except Exception as exc:
+            logger.debug("NDC Silver source unavailable, falling back to noc_tickets: %s", exc)
+
+    conn.execute(f"CREATE OR REPLACE TEMP VIEW {NDC_TICKET_SOURCE} AS {source_sql}")
+    return source_label
+
+
 def _top_dist(conn, field, rc_cat, rc_1, rc_2, limit=3):
     rc2_clause = "AND rc_2 = ?" if rc_2 else "AND rc_2 IS NULL"
     params = [rc_cat, rc_1] + ([rc_2] if rc_2 else [])
     try:
         rows = conn.execute(f"""
             SELECT {field} as val, COUNT(*) as cnt
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND {field} IS NOT NULL
             GROUP BY {field}
@@ -100,9 +145,11 @@ def full_refresh():
 
     pre_count = 0
     pre_enrichment = {}
+    before_entries = {}
     try:
         with get_connection() as conn:
             pre_count = conn.execute("SELECT COUNT(*) FROM ndc_entries").fetchone()[0]
+            before_entries = _active_entry_map(conn)
             try:
                 snap_count = conn.execute("SELECT COUNT(*) FROM ndc_alarm_snapshot").fetchone()[0]
                 sym_count = conn.execute("SELECT COUNT(*) FROM ndc_symptoms").fetchone()[0]
@@ -119,9 +166,14 @@ def full_refresh():
         entries = _discover_entries(conn)
         logger.info(f"NDC discovery: {len(entries)} entries found")
 
+    generated_entries = {entry["ndc_code"]: _entry_diff_projection(entry) for entry in entries}
+    diff = _build_entry_diff(before_entries, generated_entries)
+
     with get_write_connection() as wconn:
         for entry in entries:
             _upsert_entry(wconn, entry)
+        if entries and diff["removed_codes"]:
+            _mark_removed_entries_deprecated(wconn, diff["removed_codes"])
 
     with get_connection() as conn:
         all_entries = conn.execute("SELECT ndc_code, rc_category, rc_1, rc_2 FROM ndc_entries").fetchall()
@@ -182,6 +234,8 @@ def full_refresh():
     details = json.dumps({
         "entries_before": pre_count,
         "entries_after": post_count,
+        "diff_summary": diff["summary"],
+        "diff_preview": diff["preview"],
         "enrichment_before": pre_enrichment,
         "enrichment_after": post_enrichment,
         "duration_sec": duration_sec,
@@ -204,6 +258,89 @@ def _log_changelog(action, performed_by, details, entries_affected):
             INSERT INTO ndc_changelog (id, action, performed_by, timestamp, details, entries_affected)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
         """, [max_id, action, performed_by, details, entries_affected])
+
+
+def _active_entry_map(conn) -> dict[str, dict]:
+    try:
+        rows = conn.execute("""
+            SELECT ndc_code, title, total_tickets, sla_breach_pct,
+                   calculated_priority, priority_score, status
+            FROM ndc_entries
+        """).fetchall()
+    except Exception:
+        return {}
+    return {
+        row[0]: {
+            "title": row[1],
+            "total_tickets": int(row[2] or 0),
+            "sla_breach_pct": round(float(row[3] or 0), 2),
+            "calculated_priority": row[4],
+            "priority_score": round(float(row[5] or 0), 2),
+            "status": row[6],
+        }
+        for row in rows
+    }
+
+
+def _entry_diff_projection(entry: dict) -> dict:
+    return {
+        "title": entry.get("title"),
+        "total_tickets": int(entry.get("total_tickets") or 0),
+        "sla_breach_pct": round(float(entry.get("sla_breach_pct") or 0), 2),
+        "calculated_priority": entry.get("calculated_priority"),
+        "priority_score": round(float(entry.get("priority_score") or 0), 2),
+        "status": entry.get("status", "auto"),
+    }
+
+
+def _build_entry_diff(before: dict[str, dict], after: dict[str, dict]) -> dict:
+    before_codes = set(before)
+    after_codes = set(after)
+    added = sorted(after_codes - before_codes)
+    removed = sorted(before_codes - after_codes)
+    changed = []
+    unchanged = 0
+
+    for code in sorted(before_codes & after_codes):
+        changes = {}
+        for field in ("title", "total_tickets", "sla_breach_pct", "calculated_priority", "priority_score"):
+            old_value = before[code].get(field)
+            new_value = after[code].get(field)
+            if old_value != new_value:
+                changes[field] = {"before": old_value, "after": new_value}
+        if changes:
+            changed.append({"ndc_code": code, "changes": changes})
+        else:
+            unchanged += 1
+
+    return {
+        "summary": {
+            "added": len(added),
+            "changed": len(changed),
+            "removed": len(removed),
+            "unchanged": unchanged,
+        },
+        "preview": {
+            "added_codes": added[:20],
+            "removed_codes": removed[:20],
+            "changed_entries": changed[:20],
+        },
+        "removed_codes": removed,
+    }
+
+
+def _mark_removed_entries_deprecated(wconn, removed_codes: list[str]) -> None:
+    for code in removed_codes:
+        wconn.execute(
+            """
+            UPDATE ndc_entries
+            SET status = CASE WHEN status = 'reviewed' THEN status ELSE 'deprecated' END,
+                notes = COALESCE(notes, 'Tidak muncul pada refresh NDC terbaru.'),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE ndc_code = ?
+            """,
+            [code],
+        )
 
 
 def get_ndc_changelog(limit=50):
@@ -264,7 +401,7 @@ def _discover_entries(conn):
             ROUND(AVG(CASE WHEN is_escalate = 'true' THEN 1 ELSE 0 END) * 100, 2) as escalation_pct,
             MIN(occured_time) as first_seen,
             MAX(occured_time) as last_seen
-        FROM noc_tickets
+        FROM ndc_ticket_source
         WHERE rc_category IS NOT NULL AND rc_1 IS NOT NULL
         GROUP BY rc_category, rc_1, rc_2
         HAVING COUNT(*) >= {MIN_TICKETS}
@@ -299,7 +436,7 @@ def _discover_entries(conn):
         cat_info = CATEGORY_MAP.get(rc_cat, DEFAULT_CATEGORY)
         title = rc_1
         if rc_2:
-            title = f"{rc_1} — {rc_2}"
+            title = f"{rc_1} - {rc_2}"
 
         sla_breach = r[4] or 0
         pct_crit = r[8] or 0
@@ -375,7 +512,7 @@ def _upsert_entry(wconn, entry):
             ROUND(AVG(CASE WHEN ms.site_class = 'Silver' THEN 1 ELSE 0 END) * 100, 2),
             ROUND(AVG(CASE WHEN ms.site_class = 'Bronze' THEN 1 ELSE 0 END) * 100, 2),
             ROUND(AVG(CASE WHEN ms.site_flag = '3T' THEN 1 ELSE 0 END) * 100, 2)
-        FROM noc_tickets t
+        FROM ndc_ticket_source t
         LEFT JOIN master_site ms ON t.site_id = ms.site_id
         WHERE t.rc_category = ? AND t.rc_1 = ?
     """
@@ -470,7 +607,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
         try:
             hourly = conn.execute(f"""
                 SELECT calc_hour_of_day as h, COUNT(*) as cnt
-                FROM noc_tickets
+                FROM ndc_ticket_source
                 WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
                   AND calc_hour_of_day IS NOT NULL
                 GROUP BY calc_hour_of_day
@@ -487,7 +624,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                     if pct > best_pct:
                         best_pct = pct
                         best_start = h
-                peak_hours_range = f"{best_start:02d}:00 — {(best_start+5)%24:02d}:00 ({best_pct:.0f}% tiket)"
+                peak_hours_range = f"{best_start:02d}:00 - {(best_start+5)%24:02d}:00 ({best_pct:.0f}% tiket)"
         except Exception as e:
             logger.debug(f"Peak hours calc failed for {ndc_code}: {e}")
 
@@ -495,7 +632,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             day_names = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
             daily = conn.execute(f"""
                 SELECT calc_day_of_week, COUNT(*) as cnt
-                FROM noc_tickets
+                FROM ndc_ticket_source
                 WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
                   AND calc_day_of_week IS NOT NULL
                 GROUP BY calc_day_of_week
@@ -504,7 +641,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             """, params).fetchall()
             if daily:
                 total_d = conn.execute(f"""
-                    SELECT COUNT(*) FROM noc_tickets
+                    SELECT COUNT(*) FROM ndc_ticket_source
                     WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
                 """, params).fetchone()[0]
                 parts = []
@@ -519,7 +656,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             month_names = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'Mei',6:'Jun',7:'Jul',8:'Agu',9:'Sep',10:'Okt',11:'Nov',12:'Des'}
             monthly = conn.execute(f"""
                 SELECT calc_month, COUNT(*) as cnt
-                FROM noc_tickets
+                FROM ndc_ticket_source
                 WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
                   AND calc_month IS NOT NULL
                 GROUP BY calc_month
@@ -540,7 +677,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
         try:
             sc_rows = conn.execute(f"""
                 SELECT ms.site_class, COUNT(*) as cnt
-                FROM noc_tickets t
+                FROM ndc_ticket_source t
                 LEFT JOIN master_site ms ON t.site_id = ms.site_id
                 WHERE t.rc_category = ? AND t.rc_1 = ? {rc2_clause.replace('rc_2', 't.rc_2')}
                   AND ms.site_class IS NOT NULL
@@ -558,7 +695,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             flag_rows = conn.execute(f"""
                 SELECT
                     ROUND(AVG(CASE WHEN ms.site_flag = '3T' THEN 1 ELSE 0 END) * 100, 1)
-                FROM noc_tickets t
+                FROM ndc_ticket_source t
                 LEFT JOIN master_site ms ON t.site_id = ms.site_id
                 WHERE t.rc_category = ? AND t.rc_1 = ? {rc2_clause.replace('rc_2', 't.rc_2')}
             """, params).fetchone()
@@ -570,7 +707,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
         try:
             reg_rows = conn.execute(f"""
                 SELECT mr.regional_name, COUNT(*) as cnt
-                FROM noc_tickets t
+                FROM ndc_ticket_source t
                 LEFT JOIN master_site ms ON t.site_id = ms.site_id
                 LEFT JOIN master_to mt ON ms.to_id = mt.to_id
                 LEFT JOIN master_nop mn ON mt.nop_id = mn.nop_id
@@ -589,7 +726,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             logger.debug(f"Top regions calc failed for {ndc_code}: {e}")
 
         sample_size = conn.execute(f"""
-            SELECT COUNT(*) FROM noc_tickets
+            SELECT COUNT(*) FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
         """, params).fetchone()[0]
 
@@ -615,7 +752,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
             co_rows = wconn.execute(f"""
                 WITH ndc_base AS (
                     SELECT ticket_number_inap, site_id, occured_time
-                    FROM noc_tickets t1
+                    FROM ndc_ticket_source t1
                     WHERE t1.rc_category = ? AND t1.rc_1 = ? {rc2_clause2}
                     LIMIT 50000
                 ),
@@ -625,7 +762,7 @@ def _generate_alarm_snapshot(ndc_code, rc_cat, rc_1, rc_2):
                         t2.rc_1 as co_rc_1,
                         (EXTRACT(EPOCH FROM t2.occured_time - t1.occured_time) / 60.0) as lag_min
                     FROM ndc_base t1
-                    JOIN noc_tickets t2
+                    JOIN ndc_ticket_source t2
                         ON t1.site_id = t2.site_id
                         AND t2.ticket_number_inap != t1.ticket_number_inap
                         AND ABS(EXTRACT(EPOCH FROM t2.occured_time - t1.occured_time)) < 14400
@@ -676,7 +813,7 @@ def _extract_symptoms(ndc_code, rc_cat, rc_1, rc_2):
 
         rows = conn.execute(f"""
             SELECT summary, description
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND (summary IS NOT NULL OR description IS NOT NULL)
             LIMIT 10000
@@ -740,7 +877,7 @@ def _generate_diagnostic_skeleton(ndc_code, rc_cat, rc_1, rc_2):
                 PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY calc_restore_time_min) as q3,
                 PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY calc_restore_time_min) as q4,
                 COUNT(*) as total
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND calc_restore_time_min IS NOT NULL AND calc_restore_time_min > 0
         """, params).fetchone()
@@ -764,7 +901,7 @@ def _generate_diagnostic_skeleton(ndc_code, rc_cat, rc_1, rc_2):
                 COUNT(*) as cnt,
                 ROUND(COUNT(*) * 100.0 / ?, 1) as pct,
                 ROUND(AVG(calc_restore_time_min), 0) as avg_duration
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND calc_restore_time_min IS NOT NULL AND calc_restore_time_min > 0
             GROUP BY stage
@@ -773,10 +910,10 @@ def _generate_diagnostic_skeleton(ndc_code, rc_cat, rc_1, rc_2):
 
     skeleton = [{
         'step_number': 1,
-        'action': f"Identifikasi dan konfirmasi gangguan: {rc_1}" + (f" — {rc_2}" if rc_2 else ""),
+        'action': f"Identifikasi dan konfirmasi gangguan: {rc_1}" + (f" - {rc_2}" if rc_2 else ""),
         'expected_result': f"Konfirmasi bahwa root cause adalah {rc_1}",
         'if_yes': "Lanjut ke Step 2",
-        'if_no': "Bukan gangguan ini — evaluasi ulang klasifikasi",
+        'if_no': "Bukan gangguan ini - evaluasi ulang klasifikasi",
         'avg_duration_min': 5,
         'success_rate_at_step': None,
         'cumulative_resolve_pct': 0,
@@ -801,7 +938,7 @@ def _generate_diagnostic_skeleton(ndc_code, rc_cat, rc_1, rc_2):
         'action': "Verifikasi: semua NE up, alarm clear, layanan normal",
         'expected_result': "Site fully operational",
         'if_yes': "Close tiket. Update RCA.",
-        'if_no': "Ada alarm tersisa — buat tiket baru per alarm type",
+        'if_no': "Ada alarm tersisa - buat tiket baru per alarm type",
         'avg_duration_min': 15,
         'success_rate_at_step': round(max(0, 100 - cumulative), 1),
         'cumulative_resolve_pct': 100.0,
@@ -830,7 +967,7 @@ def _generate_resolution_paths(ndc_code, rc_cat, rc_1, rc_2):
         params = [rc_cat, rc_1] + ([rc_2] if rc_2 else [])
 
         total = conn.execute(f"""
-            SELECT COUNT(*) FROM noc_tickets
+            SELECT COUNT(*) FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND calc_restore_time_min IS NOT NULL
         """, params).fetchone()[0]
@@ -840,7 +977,7 @@ def _generate_resolution_paths(ndc_code, rc_cat, rc_1, rc_2):
 
         med = conn.execute(f"""
             SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY calc_restore_time_min)
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND calc_restore_time_min IS NOT NULL
         """, params).fetchone()[0]
@@ -858,7 +995,7 @@ def _generate_resolution_paths(ndc_code, rc_cat, rc_1, rc_2):
                 ROUND(COUNT(*) * 100.0 / {total}, 1) as probability_pct,
                 ROUND(AVG(calc_restore_time_min), 0) as avg_mttr_min,
                 ROUND(AVG(CASE WHEN calc_is_sla_met THEN 1 ELSE 0 END) * 100, 1) as sla_met_pct
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
               AND calc_restore_time_min IS NOT NULL
             GROUP BY path_cluster
@@ -872,7 +1009,7 @@ def _generate_resolution_paths(ndc_code, rc_cat, rc_1, rc_2):
             try:
                 action_rows = conn.execute(f"""
                     SELECT resolution_action, COUNT(*) as cnt
-                    FROM noc_tickets
+                    FROM ndc_ticket_source
                     WHERE rc_category = ? AND rc_1 = ? {rc2_clause}
                       AND resolution_action IS NOT NULL
                       AND CASE
@@ -953,7 +1090,7 @@ def _build_confusion_matrix():
                 rc_category_engineer as confirmed_rc_cat,
                 rc_1_engineer as confirmed_rc_1,
                 COUNT(*) as ticket_count
-            FROM noc_tickets
+            FROM ndc_ticket_source
             WHERE rc_category IS NOT NULL
               AND rc_category_engineer IS NOT NULL
               AND rc_1 IS NOT NULL
@@ -964,7 +1101,7 @@ def _build_confusion_matrix():
         """).fetchall()
 
         period = conn.execute("""
-            SELECT MIN(occured_time), MAX(occured_time) FROM noc_tickets
+            SELECT MIN(occured_time), MAX(occured_time) FROM ndc_ticket_source
             WHERE rc_category IS NOT NULL
         """).fetchone()
 
@@ -1027,7 +1164,7 @@ def _refresh_site_distributions():
                 t.site_id, n.ndc_code, t.calc_year_month as period,
                 COUNT(*) as ticket_count,
                 ROUND(AVG(t.calc_restore_time_min), 1) as avg_mttr
-            FROM noc_tickets t
+            FROM ndc_ticket_source t
             JOIN ndc_entries n ON t.rc_category = n.rc_category AND t.rc_1 = n.rc_1
                 AND (t.rc_2 = n.rc_2 OR (t.rc_2 IS NULL AND n.rc_2 IS NULL))
             WHERE t.site_id IS NOT NULL AND t.calc_year_month IS NOT NULL
@@ -1098,7 +1235,7 @@ def get_ndc_list(category=None, priority=None, status=None, search=None, sort_by
         cols = [d[0] for d in conn.execute("SELECT * FROM ndc_entries LIMIT 0").description]
 
         total_all = conn.execute("SELECT SUM(total_tickets) FROM ndc_entries").fetchone()[0] or 0
-        total_noc = conn.execute("SELECT COUNT(*) FROM noc_tickets WHERE rc_category IS NOT NULL AND rc_1 IS NOT NULL").fetchone()[0] or 1
+        total_noc = conn.execute("SELECT COUNT(*) FROM ndc_ticket_source WHERE rc_category IS NOT NULL AND rc_1 IS NOT NULL").fetchone()[0] or 1
 
         entries = [dict(zip(cols, r)) for r in rows]
 
@@ -1203,7 +1340,7 @@ def get_ndc_for_entity(entity_level, entity_id, limit=10):
 
     with get_connection() as conn:
         total = conn.execute(f"""
-            SELECT COUNT(*) FROM noc_tickets t
+            SELECT COUNT(*) FROM ndc_ticket_source t
             WHERE {col} = ? AND t.rc_category IS NOT NULL AND t.rc_1 IS NOT NULL
         """, [entity_id]).fetchone()[0]
 
@@ -1215,7 +1352,7 @@ def get_ndc_for_entity(entity_level, entity_id, limit=10):
                 n.ndc_code, n.title, n.category_code, n.calculated_priority,
                 COUNT(*) as ticket_count,
                 ROUND(COUNT(*) * 100.0 / {total}, 1) as pct
-            FROM noc_tickets t
+            FROM ndc_ticket_source t
             JOIN ndc_entries n ON t.rc_category = n.rc_category AND t.rc_1 = n.rc_1
                 AND (t.rc_2 = n.rc_2 OR (t.rc_2 IS NULL AND n.rc_2 IS NULL))
             WHERE {col} = ?

@@ -18,7 +18,13 @@ from backend.services.predictive_service import (
     get_child_sites,
 )
 from backend.services.operational_catalog_service import create_job
-from backend.services.sarimax_service import SarimaxRunConfig, latest_sarimax_forecast, run_sarimax_volume_forecast
+from backend.services.sarimax_service import (
+    SarimaxRunConfig,
+    assess_sarimax_readiness,
+    latest_sarimax_forecast,
+    load_summary_volume_rows,
+    run_sarimax_volume_forecast,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +333,43 @@ async def run_sarimax_forecast_job(
         ),
     )
     return {"status": "started", "job_id": job["job_id"]}
+
+
+@router.get("/forecast/sarimax/readiness")
+async def get_sarimax_readiness(
+    entity_level: str = Query("site"),
+    entity_id: Optional[str] = Query(None),
+    window_start: str = Query(...),
+    window_end: str = Query(...),
+    horizon: int = Query(3),
+    limit: int = Query(100),
+    min_points: int = Query(6),
+):
+    config = SarimaxRunConfig(
+        entity_level=entity_level,
+        entity_id=entity_id,
+        window_start=window_start,
+        window_end=window_end,
+        horizon=horizon,
+        limit=limit,
+        min_points=min_points,
+        persist_model_runs=False,
+    )
+    rows = load_summary_volume_rows(
+        entity_level=entity_level,
+        entity_id=entity_id,
+        window_start=window_start,
+        window_end=window_end,
+        limit=limit,
+    )
+    return {
+        "entity_level": entity_level,
+        "entity_id": entity_id,
+        "window_start": window_start,
+        "window_end": window_end,
+        "feature_rows": len(rows),
+        "readiness": assess_sarimax_readiness(rows, config),
+    }
 
 
 @router.get("/sla-breach")

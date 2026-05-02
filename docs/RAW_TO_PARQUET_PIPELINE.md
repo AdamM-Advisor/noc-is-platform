@@ -91,4 +91,21 @@ SARIMAX dijalankan sebagai batch job dari summary cache, bukan saat halaman dibu
 
 Hasilnya disimpan di `model_run_catalog`. Endpoint forecast akan memakai hasil SARIMAX tersimpan jika tersedia untuk entity/window yang sama. Jika belum ada hasil batch, endpoint masih bisa fallback ke forecast statistik lama.
 
+Sebelum menjalankan batch, cek kesiapan data:
+
+```text
+GET /api/profiler/forecast/sarimax/readiness?entity_level=site&window_start=2025-01&window_end=2025-12
+```
+
+Default lokal membutuhkan minimal `6` periode aktif per entity. Seasonal tahunan baru dianggap siap saat tersedia sekitar `24` bulan data. Jika data baru 1 bulan, job SARIMAX akan selesai dengan status hasil `insufficient_data` dan tidak membuat model run palsu.
+
 Dependency SARIMAX memakai `statsmodels`; jalankan ulang `.\scripts\setup-local.ps1` setelah update dependency.
+
+## NDC / KMS
+
+NDC refresh sekarang memakai sumber tiket detail berikut:
+
+1. `noc_tickets` jika tabel legacy berisi data.
+2. Silver Parquet jika `noc_tickets` kosong.
+
+Dengan begitu pipeline baru tetap bisa membangun Knowledge Management System dari file Silver tanpa harus menyalin puluhan juta tiket ke tabel DuckDB legacy. Setiap refresh mencatat before-after summary di `ndc_changelog`, termasuk jumlah NDC yang bertambah, berubah, dan hilang/deprecated.

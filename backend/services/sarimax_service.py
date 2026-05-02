@@ -53,6 +53,7 @@ def run_sarimax_volume_forecast(config: SarimaxRunConfig) -> dict:
             window_end=config.window_end,
             limit=config.limit,
         )
+        readiness = assess_sarimax_readiness(rows, config)
         forecasts = forecast_summary_rows(rows, config)
         model_runs = []
         if config.persist_model_runs:
@@ -78,7 +79,7 @@ def run_sarimax_volume_forecast(config: SarimaxRunConfig) -> dict:
                 )
 
         result = {
-            "status": "completed",
+            "status": "completed" if forecasts else "insufficient_data",
             "model_name": MODEL_NAME,
             "model_version": MODEL_VERSION,
             "entity_level": config.entity_level,
@@ -87,6 +88,7 @@ def run_sarimax_volume_forecast(config: SarimaxRunConfig) -> dict:
             "window_end": validate_year_month(config.window_end, "window_end"),
             "horizon": config.horizon,
             "feature_rows": len(rows),
+            "readiness": readiness,
             "forecast_count": len(forecasts),
             "forecasts": forecasts,
             "model_runs": model_runs,
@@ -197,6 +199,64 @@ def forecast_summary_rows(rows: list[dict], config: SarimaxRunConfig) -> list[di
             }
         )
     return forecasts[: max(1, min(config.limit, 10000))]
+
+
+def assess_sarimax_readiness(rows: list[dict], config: SarimaxRunConfig) -> dict:
+    periods = month_range(config.window_start, config.window_end)
+    grouped: dict[str, dict[str, float]] = {}
+    totals: dict[str, float] = {}
+    for row in rows:
+        entity_id = str(row.get("entity_id") or "").strip()
+        if not entity_id:
+            continue
+        period = str(row.get("year_month"))
+        value = float(row.get("total_tickets") or 0)
+        grouped.setdefault(entity_id, {})[period] = value
+        totals[entity_id] = totals.get(entity_id, 0.0) + value
+
+    entity_statuses = []
+    for entity_id in sorted(grouped, key=lambda item: totals.get(item, 0), reverse=True):
+        values = [float(grouped[entity_id].get(period, 0.0)) for period in periods]
+        nonzero_points = sum(1 for value in values if value > 0)
+        eligible = nonzero_points >= config.min_points
+        entity_statuses.append(
+            {
+                "entity_id": entity_id,
+                "total_tickets": int(totals.get(entity_id, 0)),
+                "available_periods": len(periods),
+                "nonzero_points": nonzero_points,
+                "eligible": eligible,
+                "reason": None if eligible else f"Butuh minimal {config.min_points} periode aktif untuk SARIMAX.",
+            }
+        )
+
+    eligible_count = sum(1 for item in entity_statuses if item["eligible"])
+    seasonal_required_points = (config.seasonal_order[3] * 2) if config.seasonal_order else 24
+    seasonal_ready = len(periods) >= seasonal_required_points
+    if eligible_count == 0:
+        recommendation = (
+            f"Data belum cukup untuk SARIMAX. Upload/import minimal {config.min_points} bulan aktif; "
+            "untuk seasonal tahunan idealnya 24 bulan."
+        )
+    elif not seasonal_ready:
+        recommendation = (
+            "SARIMAX non-seasonal bisa dijalankan, tetapi seasonal tahunan belum aktif. "
+            f"Butuh minimal {seasonal_required_points} bulan untuk seasonal_order tahunan."
+        )
+    else:
+        recommendation = "Data cukup untuk SARIMAX seasonal."
+
+    return {
+        "window_months": len(periods),
+        "min_points": config.min_points,
+        "seasonal_required_points": seasonal_required_points,
+        "seasonal_ready": seasonal_ready,
+        "entities_seen": len(entity_statuses),
+        "eligible_entities": eligible_count,
+        "skipped_entities": max(0, len(entity_statuses) - eligible_count),
+        "recommendation": recommendation,
+        "entity_statuses": entity_statuses[:50],
+    }
 
 
 def fit_sarimax_series(
